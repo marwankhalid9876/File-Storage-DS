@@ -3,7 +3,7 @@ import threading
 import time
 import sys
 from server import server_main_app
-
+port = 8888
 class Server:
     port_list = [8887, 8888, 8889]
 
