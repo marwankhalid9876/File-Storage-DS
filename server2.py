@@ -2,6 +2,7 @@ import socket
 import threading
 import time
 import sys
+from server import server_main_app
 
 class Server:
     port_list = [8887, 8888, 8889]
@@ -45,13 +46,19 @@ class Server:
             if self.is_leader:
                 # if leader, broadcast message to all servers
                 print("Forwarding message from client to all servers")
+                #DO THE FORWARDING HERE
+                
                 self.broadcast_message(message)
+                # do what ever you have to do
+                print("Message Content: ", message)
+                print("Message Processed")
+                # server_main_app(client_socket)
+                threading.Thread(target=server_main_app, args=(client_socket,)).start()
+
             else:
                 print("Message received from Leader")
 
-            # do what ever you have to do
-            print("Message Content: ", message)
-            print("Message Processed")
+            
 
     def listen_for_broadcast(self):
         print("Listening for broadcast...")
@@ -72,7 +79,8 @@ class Server:
             if server_config not in self.servers:
                 print(f"Adding server: {server_config} to discovered servers")
                 self.servers.append(server_config)
-
+                #Q: WHY DO WE NEED TO DISCOVER HOSTS AGAIN?
+                #Q: WHY DO WE NEED TO ELECT LEADER AGAIN?
                 self.discover_hosts()
                 self.elect_leader()
         
@@ -150,7 +158,7 @@ class Server:
         print("Server Started...")
 
 if __name__ == '__main__':
-    port = int(sys.argv[1])
+    # port = int(sys.argv[1])
     #is_leader = True if sys.argv[2].lower() == 'true' else False
     server = Server(server_port=port)#, is_leader=is_leader)
     server.start()

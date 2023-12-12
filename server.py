@@ -50,121 +50,121 @@ def send_tree_to_client(client):
     tree = pickle.dumps(tree)
     client.sendall(tree)
     
-print('SERVER INITIALIZING...')
-server = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # TCP
-server.bind(('localhost', 9999))
-server.listen()
-print('SERVER RUNNING...')
+# print('SERVER INITIALIZING...')
+# server = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # TCP
+# server.bind(('localhost', 9999))
+# server.listen()
+# print('SERVER RUNNING...')
 
-while True:
-    print('==============================================')
-    client, address = server.accept()
-    print(f'CLIENT {address} CONNECTED...')
+def server_main_app(client):
+        print('==============================================')
+        print('CONNECTED TO A CLIENT...')
+        # client, address = server.accept()
+        # print(f'CLIENT {address} CONNECTED...')
 
-    connection_opened = True
+        # connection_opened = True
 
-    try: #First, send the tree of the directory and subdirectories to the client
-        #Send the tree of directories and files on the server
-        send_tree_to_client(client)
-    except ConnectionResetError:#If the client disconnected:
-        print('CLIENT DISCONNECTED')
-        connection_opened = False
-        client.close()
-        continue
-
-    subfolder = ''
-    #SERVE THIS CLIENT WITH AS MANY OPERATIONS AS HE WANTS
-    while connection_opened:
-        
-        #send the list of files on the server
-        files_on_server = next(os.walk('sender_folder/'+subfolder), (None, None, []))[2]  # [] if no file
-        
-        try:
-            # #Send the list of files on the server
-            # client.send(str(files_on_server).encode())
-            # #send the list of subfolders on the server
-            # all_subdirectories = [x[0] for x in os.walk('sender_folder/'+subfolder)]
-            operation_path = client.recv(1024).decode() #Receive the operation and filename from the client
+        try: #First, send the tree of the directory and subdirectories to the client
+            #Send the tree of directories and files on the server
+            send_tree_to_client(client)
         except ConnectionResetError:#If the client disconnected:
             print('CLIENT DISCONNECTED')
             connection_opened = False
             client.close()
-            break
-        print(operation_path)
-        operation_path_list = operation_path.split(' ', 1)
-        
-        try:
-            operation = operation_path_list[0].lower()
-            #substring path to remove first 5 characters "root/"
-            path = operation_path_list[1][5:]
-            print(path)
-        except:
-            #Close the connection because the client request errors are handled at client. 
-            #If the client sent an invalid request, then it means that the client is not working properly
-            print('CLIENT REQUESTED INVALID OPERATION')
-            connection_opened = False
-            client.close()
-            break
-        
-        print('CLIENT REQUESTED OPERATION: '+operation_path)
-        match operation:
-            case 'read':
-                success = send_file(path, client)
-                if not success:
-                    print('CLIENT DISCONNECTED')
-                    connection_opened = False
-                    client.close()
-                    break
-                print('READ REQUEST SERVED!')
-            case 'write':
-                print('RECEIVING FILE...')
-                success = receive_write_file(path, client)
-                if not success:
-                    print('CLIENT DISCONNECTED')
-                    connection_opened = False
-                    client.close()
-                    break
-                print('WRITE REQUEST SERVED!')
-            case 'update':
-                print('SENDING CURRENT FILE STATUS...')
-                success = send_file(path, client)
-                if not success:
-                    print('CLIENT DISCONNECTED')
-                    connection_opened = False
-                    client.close()
-                    break
-                print('FILE STATUS SENT!')
-                print('RECEIVING UPDATED FILE...')
-                success = receive_write_file(path, client)
-                if not success:
-                    print('CLIENT DISCONNECTED')
-                    connection_opened = False
-                    client.close()
-                    break
-                print('UPDATE REQUEST SERVED!')
-            case 'delete':
-                try:
-                    os.remove('sender_folder/'+path)
-                except ConnectionResetError:
-                    send_tree_to_client(client)
-                    client.send(b'<Fail>')
-                send_tree_to_client(client)
-                client.send(b'<Done>')
-                print('DELETE REQUEST SERVED!')
-            case 'create':
-                pass
-            case 'cd':
-                pass
+            return
 
-        try:
-            if(client.recv(1024).decode() == '<Exit>'):
+        subfolder = ''
+        connection_opened = True
+        #SERVE THIS CLIENT WITH AS MANY OPERATIONS AS HE WANTS
+        while connection_opened:
+            
+            
+            try:
+                # #Send the list of files on the server
+                # client.send(str(files_on_server).encode())
+                # #send the list of subfolders on the server
+                # all_subdirectories = [x[0] for x in os.walk('sender_folder/'+subfolder)]
+                operation_path = client.recv(1024).decode() #Receive the operation and filename from the client
+            except ConnectionResetError:#If the client disconnected:
+                print('CLIENT DISCONNECTED')
                 connection_opened = False
                 client.close()
-        except ConnectionResetError:
-            print('CLIENT DISCONNECTED')
-            connection_opened = False
-            client.close()
-            break
-    print('CLIENT OPERATION TERMINATED...')
+                break
+            print(operation_path)
+            operation_path_list = operation_path.split(' ', 1)
+            
+            try:
+                operation = operation_path_list[0].lower()
+                #substring path to remove first 5 characters "root/"
+                path = operation_path_list[1][5:]
+                print(path)
+            except:
+                #Close the connection because the client request errors are handled at client. 
+                #If the client sent an invalid request, then it means that the client is not working properly
+                print('CLIENT REQUESTED INVALID OPERATION')
+                connection_opened = False
+                client.close()
+                break
+            
+            print('CLIENT REQUESTED OPERATION: '+operation_path)
+            match operation:
+                case 'read':
+                    success = send_file(path, client)
+                    if not success:
+                        print('CLIENT DISCONNECTED')
+                        connection_opened = False
+                        client.close()
+                        break
+                    print('READ REQUEST SERVED!')
+                case 'write':
+                    print('RECEIVING FILE...')
+                    success = receive_write_file(path, client)
+                    if not success:
+                        print('CLIENT DISCONNECTED')
+                        connection_opened = False
+                        client.close()
+                        break
+                    print('WRITE REQUEST SERVED!')
+                case 'update':
+                    print('SENDING CURRENT FILE STATUS...')
+                    success = send_file(path, client)
+                    if not success:
+                        print('CLIENT DISCONNECTED')
+                        connection_opened = False
+                        client.close()
+                        break
+                    print('FILE STATUS SENT!')
+                    print('RECEIVING UPDATED FILE...')
+                    success = receive_write_file(path, client)
+                    if not success:
+                        print('CLIENT DISCONNECTED')
+                        connection_opened = False
+                        client.close()
+                        break
+                    print('UPDATE REQUEST SERVED!')
+                case 'delete':
+                    try:
+                        os.remove('sender_folder/'+path)
+                    except ConnectionResetError:
+                        send_tree_to_client(client)
+                        client.send(b'<Fail>')
+                    send_tree_to_client(client)
+                    client.send(b'<Done>')
+                    print('DELETE REQUEST SERVED!')
+                case 'create':
+                    pass
+                case 'cd':
+                    pass
+
+            try:
+                if(client.recv(1024).decode() == '<Exit>'):
+                    connection_opened = False
+                    client.close()
+            except ConnectionResetError:
+                print('CLIENT DISCONNECTED')
+                connection_opened = False
+                client.close()
+                break
+        print('CLIENT OPERATION TERMINATED...')
 
 

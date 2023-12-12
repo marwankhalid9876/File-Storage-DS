@@ -2,6 +2,7 @@ import socket
 import time
 import threading
 import sys
+from client import client_main_app
 
 class Client:
     server_port_list = [8887, 8888, 8889]
@@ -36,7 +37,7 @@ class Client:
 
         listen_socket.close()
 
-    def send_message(self, message):
+    def initiate_operation(self):
         r"""Sends a message to the leader server"""
         while True:
             self.discover_leader()
@@ -46,13 +47,16 @@ class Client:
             else:
                 try:
                     print(f"Sending message to the leader: {(self.leader[0], self.server_port)}")
-                    with socket.create_connection((self.leader[0], self.server_port), timeout=1) as client_socket:
-                        client_socket.send(message.encode())
-                        self.leader = None
+                    # with socket.create_connection((self.leader[0], self.server_port), timeout=1) as client_socket:
+                    #     client_socket.send(message.encode())
+                    #     self.leader = None
+                    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    client.connect((self.leader[0], self.server_port))
+                    client.send('I AM CLIENT'.encode())
+                    client_main_app(client)
 
                 except Exception as e:
                     print(f"An error occurred: {e}")
-
                 break
             time.sleep(1)
                     
@@ -60,7 +64,7 @@ class Client:
 if __name__ == '__main__':
     
     client = Client(int(sys.argv[1]), int(sys.argv[2]))
-    while True:
-        message = input("Enter message: ")
-        client.send_message(message)
+    # while True:
+        # message = input("Enter message: ")
+    client.initiate_operation()
         #threading.Thread(target=client.send_message, args=(message,)).start()    

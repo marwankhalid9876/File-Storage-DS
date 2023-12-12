@@ -9,7 +9,7 @@ def check_filename_exists(filename, filenames_on_server):
     return True
 
 
-def read_file_from_server(file_path):
+def read_file_from_server(file_path, client):
     filename = file_path.split('/')[-1]
     file = open(filename, 'wb')#extract filename from path
     file_bytes = b""
@@ -23,7 +23,7 @@ def read_file_from_server(file_path):
     file.close()
     os.startfile(filename)
 
-def write_file_to_server(file_path):
+def write_file_to_server(file_path, client):
     try:
         filename = file_path.split('/')[-1]
         file = open(filename, 'rb')
@@ -105,7 +105,7 @@ def is_valid_directory(directories_dict, current_directory, directory_path):
 
 def is_valid_path(directories_dict, current_directory, path):
     #get rid of back steps
-    current_directory, directory_path = cd_back_steps(current_directory, directory_path)
+    current_directory, directory_path = cd_back_steps(current_directory, path)
     if directory_path == '': return True #if user entered only back steps
     #check that directory/file exists
     path_list = path.split('/')
@@ -117,123 +117,125 @@ def is_valid_path(directories_dict, current_directory, path):
             current_directory = current_directory + '/' + directory
     return True
 
-def receive_tree_from_server():
+def receive_tree_from_server(client):
     directories_dict = client.recv(4096)
     directories_dict = pickle.loads(directories_dict)
     return directories_dict
 
 
 print('Connecting to the server...')
-client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client.connect(('localhost', 9999))
+# client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+# client.connect(('localhost', 9999))
 
-current_directory = 'root'
-#Once connected, the client receives the directory tree from the server
-directories_dict = receive_tree_from_server()
-while True:
-    
 
-    while True: #loop until valid input
-        try:
-            # Print the files on the server and the operations that can be done
-            prompt_user(directories_dict, current_directory)
-            operation_filename = input('Please enter your operation: \n')
-            operation_filename_list = operation_filename.split(' ', 1)
-            operation = operation_filename_list[0].lower()
-            if operation == 'exit': break
-            filename = operation_filename_list[1]
-            if operation not in ['read', 'write', 'update', 'delete','cd']:
-                raise Exception
-            if operation in ['read','update','delete'] and not is_valid_path(directories_dict, current_directory, filename):
-                print('This file does not exist, please enter a file from the list')
-                raise Exception
-            if operation == 'write' and not os.path.exists(filename):#check that file exists on client side
-                raise Exception
-            if operation == 'write' and is_valid_path(directories_dict, current_directory, filename): 
-                if input('File already exists on the server, do you want to overwrite it? (y/n) \n') != 'y':
-                    continue #if user doesn't want to overwrite, re-prompt user for another operation
-            if operation == 'delete' and input('Are you sure you want to delete this file? (y/n) \n') != 'y':
-                continue #if user doesn't want to delete, re-prompt user for another operation
-            if operation == 'cd'and not is_valid_directory(directories_dict, current_directory, filename):
+def client_main_app(client):
+    current_directory = 'root'
+    #Once connected, the client receives the directory tree from the server
+    directories_dict = receive_tree_from_server(client)
+    while True:
+        
+
+        while True: #loop until valid input
+            try:
+                # Print the files on the server and the operations that can be done
+                prompt_user(directories_dict, current_directory)
+                operation_filename = input('Please enter your operation: \n')
+                operation_filename_list = operation_filename.split(' ', 1)
+                operation = operation_filename_list[0].lower()
+                if operation == 'exit': break
+                filename = operation_filename_list[1]
+                if operation not in ['read', 'write', 'update', 'delete','cd']:
                     raise Exception
-            break #break out of loop if valid input
-        #handle if invalid input
-        except:
-            print('Invalid input, please try again')
-            
-    if operation == 'exit': break    
+                if operation in ['read','update','delete'] and not is_valid_path(directories_dict, current_directory, filename):
+                    print('This file does not exist, please enter a file from the list')
+                    raise Exception
+                if operation == 'write' and not os.path.exists(filename):#check that file exists on client side
+                    raise Exception
+                if operation == 'write' and is_valid_path(directories_dict, current_directory, filename): 
+                    if input('File already exists on the server, do you want to overwrite it? (y/n) \n') != 'y':
+                        continue #if user doesn't want to overwrite, re-prompt user for another operation
+                if operation == 'delete' and input('Are you sure you want to delete this file? (y/n) \n') != 'y':
+                    continue #if user doesn't want to delete, re-prompt user for another operation
+                if operation == 'cd'and not is_valid_directory(directories_dict, current_directory, filename):
+                        raise Exception
+                break #break out of loop if valid input
+            #handle if invalid input
+            except:
+                print('Invalid input, please try again')
+                
+        if operation == 'exit': break    
 
-    match operation:
-        case 'read':
-            operation_path = operation + ' ' + current_directory + '/' + filename
-            client.send(operation_path.encode())
-            read_file_from_server(filename)
+        match operation:
+            case 'read':
+                operation_path = operation + ' ' + current_directory + '/' + filename
+                client.send(operation_path.encode())
+                read_file_from_server(filename, client)
 
-            if input('Do you want to do more operations? (y/n) \n') == 'y':
-                client.send(b'<Continue>')#inform server that I want to do more operations
-                continue
-            break
-        case 'write':
-            operation_path = operation + ' ' + current_directory + '/' + filename
-            client.send(operation_path.encode())
-            success = write_file_to_server(filename)
-            if not success:
-                print('Error! Please try again')
-                continue
-            directories_dict = receive_tree_from_server()
-            print("These are the files currently in the server after writing"  + str(directories_dict) + " directory: ")
-            print(client.recv(1024).decode())#print the server response
-            if input('Do you want to do more operations? (y/n) \n') == 'y':
-                client.send(b'<Continue>')#inform server that I want to do more operations
-                continue
-            break
-        case 'update':         
-            operation_path = operation + ' ' + current_directory + '/' + filename       
-            client.send(operation_path.encode())
-            print('The file will now be opened automatically, please make your changes and save the file')
-            read_file_from_server(operation_path)
-            while True:
-                user_done = input('Once you are done, please close the file and enter "y" \n') == 'y'
-                if user_done:
-                    write_file_to_server(filename)
-                    directories_dict = receive_tree_from_server()        
-                    print(client.recv(1024).decode())#print the server response
-                    break
-                else: 
-                    if input('Are you sure you want to exit without updating the file on the server? (y/n) \n') == 'y':
-                        client.send(b'<Cancel>')#inform server that update was cancelled
+                if input('Do you want to do more operations? (y/n) \n') == 'y':
+                    client.send(b'<Continue>')#inform server that I want to do more operations
+                    continue
+                break
+            case 'write':
+                operation_path = operation + ' ' + current_directory + '/' + filename
+                client.send(operation_path.encode())
+                success = write_file_to_server(filename, client)
+                if not success:
+                    print('Error! Please try again')
+                    continue
+                directories_dict = receive_tree_from_server(client)
+                print("These are the files currently in the server after writing"  + str(directories_dict) + " directory: ")
+                print(client.recv(1024).decode())#print the server response
+                if input('Do you want to do more operations? (y/n) \n') == 'y':
+                    client.send(b'<Continue>')#inform server that I want to do more operations
+                    continue
+                break
+            case 'update':         
+                operation_path = operation + ' ' + current_directory + '/' + filename       
+                client.send(operation_path.encode())
+                print('The file will now be opened automatically, please make your changes and save the file')
+                read_file_from_server(operation_path, client)
+                while True:
+                    user_done = input('Once you are done, please close the file and enter "y" \n') == 'y'
+                    if user_done:
+                        write_file_to_server(filename, client)
+                        directories_dict = receive_tree_from_server(client)        
+                        print(client.recv(1024).decode())#print the server response
                         break
-            
-            if input('Do you want to do more operations? (y/n) \n') == 'y':
-                client.send(b'<Continue>')#inform server that I want to do more operations
+                    else: 
+                        if input('Are you sure you want to exit without updating the file on the server? (y/n) \n') == 'y':
+                            client.send(b'<Cancel>')#inform server that update was cancelled
+                            break
+                
+                if input('Do you want to do more operations? (y/n) \n') == 'y':
+                    client.send(b'<Continue>')#inform server that I want to do more operations
+                    continue
+                break
+            case 'delete':
+                # if check_filename_exists(filename, filenames_in_directory) == False:
+                #     continue
+                operation_path = operation + ' ' + current_directory + '/' + filename
+                client.send(operation_path.encode())
+                directories_dict = receive_tree_from_server(client)
+                print("These are the files currently in the server "  + str(directories_dict) + " directory: ")
+                print(client.recv(1024).decode())#print the server response <Done>   
+                                
+                if input('Do you want to do more operations? (y/n) \n') == 'y':
+                    client.send(b'<Continue>')#inform server that I want to do more operations
+                    continue
+                break
+            case 'cd':
+                #get rid of back steps
+                current_directory, filename = cd_back_steps(current_directory, filename)
+                #if there is a path after stepbacks, add it to the current directory
+                if filename != '':
+                    current_directory += '/' + filename
                 continue
-            break
-        case 'delete':
-            # if check_filename_exists(filename, filenames_in_directory) == False:
-            #     continue
-            operation_path = operation + ' ' + current_directory + '/' + filename
-            client.send(operation_path.encode())
-            directories_dict = receive_tree_from_server()
-            print("These are the files currently in the server "  + str(directories_dict) + " directory: ")
-            print(client.recv(1024).decode())#print the server response <Done>   
-                              
-            if input('Do you want to do more operations? (y/n) \n') == 'y':
-                client.send(b'<Continue>')#inform server that I want to do more operations
+            case _:#handle if invalid operation
+                print('Invalid input, please try again2')
                 continue
-            break
-        case 'cd':
-            #get rid of back steps
-            current_directory, filename = cd_back_steps(current_directory, filename)
-            #if there is a path after stepbacks, add it to the current directory
-            if filename != '':
-                current_directory += '/' + filename
-            continue
-        case _:#handle if invalid operation
-            print('Invalid input, please try again2')
-            continue
 
-client.send('<Exit>'.encode())
-client.close()
+    client.send('<Exit>'.encode())
+    client.close()
 
 
 # file_size = client.recv(1024).decode()
