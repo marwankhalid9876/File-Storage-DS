@@ -4,21 +4,21 @@ import time
 import sys
 
 class Server:
-    port_list = [8887, 8888, 8889]
 
-    def __init__(self, server_port):
+    SERVER_UDP_PORT = 5000
+
+    def __init__(self, server_tcp_port):
         self.server_ip = f"{socket.gethostbyname(socket.gethostname())}"
-        print(self.server_ip)
-        self.server_port = server_port
+        self.server_tcp_port = server_tcp_port
         self.is_leader = False
         self.servers = []
         self.leader = None
 
     def broadcast_message(self, message):
-        multicast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         for server in self.servers:
-            multicast_socket.sendto(message.encode(), (server['ip'], server['port']))
-        multicast_socket.close()
+            print(f"Sending message to {server}")
+            with socket.create_connection((server['ip'], server['port']), timeout=2) as multicast_socket:
+                multicast_socket.send(message.encode())
 
     def discover_hosts(self):
         print("Discovering hosts...")
@@ -26,15 +26,11 @@ class Server:
         discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         discovery_socket.bind((self.server_ip, 0)) 
 
-        for port in Server.port_list:
-            if port == self.server_port:
-                continue
-            else:
-                discovery_socket.sendto(f'DISCOVER:{self.server_port}'.encode(), ('<broadcast>', port))
+        discovery_socket.sendto(f'DISCOVER:{self.server_tcp_port}'.encode(), ('<broadcast>', Server.SERVER_UDP_PORT))
 
     def listen_for_TCP(self):
         listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        listen_socket.bind((self.server_ip, self.server_port))
+        listen_socket.bind((self.server_ip, self.server_tcp_port))
         listen_socket.listen(5)
 
         while True:
@@ -57,7 +53,8 @@ class Server:
     def listen_for_UDP(self):
         print("Listening for UDP Messages...")
         listen_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        listen_socket.bind(('0.0.0.0', self.server_port))
+        listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listen_socket.bind(('0.0.0.0', Server.SERVER_UDP_PORT))
 
         while True:
             message, addr = listen_socket.recvfrom(1024)
@@ -66,33 +63,39 @@ class Server:
             if decoded_message.startswith(('WHO_IS_THE_LEADER:', 'DISCOVER', 'I_AM_HERE')):
                 threading.Thread(target=self.handel_discover_broadcast, args=(addr, decoded_message)).start()
             else:
-                print(f"Received message from {addr}: {decoded_message}")
+                print(f"Received from Leader: {decoded_message}")
 
     def handel_discover_broadcast(self, addr, message):
+
         message_body, port = message.split(':')
+
         if message_body=='DISCOVER':
             # discover message
             server_config = {'ip': addr[0], 'port': int(port)}
-            if server_config not in self.servers:
-                print(f"Adding server: {server_config} to discovered servers")
-                self.servers.append(server_config)
 
-                self.elect_leader()
-            
-            send_ack_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            # get available port
-            send_ack_socket.bind((self.server_ip, 0))
-            # should send server ip not port
-            send_ack_socket.sendto(f'I_AM_HERE:{self.server_port}'.encode(), (addr[0], int(port)))
+            if server_config != {'ip': self.server_ip, 'port': self.server_tcp_port}:
 
-        
+                if server_config not in self.servers:
+
+                    print(f"Adding server: {server_config} to discovered servers")
+                    self.servers.append(server_config)
+
+                    self.elect_leader()
+                
+                send_ack_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                # get available port
+                send_ack_socket.bind((self.server_ip, 0))
+                # should send server ip not port
+                send_ack_socket.sendto(f'I_AM_HERE:{self.server_tcp_port}'.encode(), (addr[0], Server.SERVER_UDP_PORT))
+    
         elif message_body=='I_AM_HERE':
             server_config = {'ip': addr[0], 'port': int(port)}
-            if server_config not in self.servers:
-                print(f"Adding server: {server_config} to discovered servers")
-                self.servers.append(server_config)
+            if server_config != {'ip': self.server_ip, 'port': self.server_tcp_port}:
+                if server_config not in self.servers:
+                    print(f"Adding server: {server_config} to discovered servers")
+                    self.servers.append(server_config)
 
-                self.elect_leader()
+                    self.elect_leader()
         
         elif message_body=='WHO_IS_THE_LEADER':
             print("Received WHO_IS_LEADER")
@@ -107,18 +110,19 @@ class Server:
                 # get available port
                 send_ack_socket.bind((self.server_ip, 0))
                 # should send server ip not port
-                send_ack_socket.sendto(f'I_AM_THE_LEADER:{self.server_port}'.encode(), (addr[0], int(port)))
+                send_ack_socket.sendto(f'I_AM_THE_LEADER:{self.server_tcp_port}'.encode(), (addr[0], int(port)))
+                send_ack_socket.close()
     
     def elect_leader(self):
         self.previous_leadership = self.is_leader
         self.is_leader = True
         for server in self.servers:
-            if f"{server['port']}" > f"{self.server_port}":
+            if f"{server['ip']}:{server['port']}" > f"{self.server_ip}:{self.server_tcp_port}":
                 self.is_leader = False
 
         if self.is_leader and (self.is_leader!=self.previous_leadership):
             self.leader_ip = self.server_ip
-            self.leader_port = self.server_port
+            self.leader_port = self.server_tcp_port
             self.broadcast_message('NEW_LEADER')
 
         print(f"Am I Leader: {self.is_leader}")
@@ -132,7 +136,7 @@ class Server:
             #sorted_servers = sorted(self.servers, key=lambda x: x['ip'])
             for server in self.servers:
                 try:
-                    with socket.create_connection((server['ip'], server['port']), timeout=5) as heartbeat_socket:
+                    with socket.create_connection((server['ip'], server['port']), timeout=2) as heartbeat_socket:
                         heartbeat_socket.send("HEARTBEAT".encode())
                 except socket.error as e:
                     print(e)
@@ -144,14 +148,16 @@ class Server:
                 # if all servers larger than me are dead, I am the leader
                 self.discover_hosts()
                 self.elect_leader()
+                self.print_servers()
 
             time.sleep(1)
+            # self.print_servers()
 
     def print_servers(self):
         print("*"*20)
         
         print("All Running Servers: ")
-        print("-", {'ip': self.server_ip, 'port': self.server_port}, "(Me)")
+        print("-", {'ip': self.server_ip, 'port': self.server_tcp_port}, "(Me)")
         for server in self.servers:
             print("-", server)
         print("*"*20)
@@ -172,6 +178,5 @@ class Server:
 
 if __name__ == '__main__':
     port = int(sys.argv[1])
-    #is_leader = True if sys.argv[2].lower() == 'true' else False
-    server = Server(server_port=port)#, is_leader=is_leader)
+    server = Server(server_tcp_port=port)
     server.start()

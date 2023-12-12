@@ -4,21 +4,18 @@ import threading
 import sys
 
 class Client:
-    server_port_list = [8887, 8888, 8889]
-    def __init__(self, server_port, client_port=5555):
-        self.server_port = server_port
+    SERVER_UDP_PORT = 5000
+    def __init__(self, client_port=5555):
         self.leader = None
         self.client_port = client_port
         threading.Thread(target=self.listen_for_ack).start()
 
     def discover_leader(self):
         r"""Broadcasts a message to all servers to discover the leader"""
-
-        for port in Client.server_port_list:
-            discovery_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            discovery_socket.sendto(f'WHO_IS_THE_LEADER:{self.client_port}'.encode(), ('255.255.255.255', port))
-            discovery_socket.close()
+        discovery_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        discovery_socket.sendto(f'WHO_IS_THE_LEADER:{self.client_port}'.encode(), ('255.255.255.255', Client.SERVER_UDP_PORT))
+        discovery_socket.close()
     
     def listen_for_ack(self):
         r"""Listens for a response from the leader server"""
@@ -59,7 +56,7 @@ class Client:
 
 if __name__ == '__main__':
     
-    client = Client(int(sys.argv[1]), int(sys.argv[2]))
+    client = Client(int(sys.argv[1]))
     while True:
         message = input("Enter message: ")
         client.send_message(message)
