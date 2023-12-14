@@ -63,7 +63,7 @@ def prompt_user(directories_dict, current_directory):
     print('==============================================')
     print("These are the files currently in the server's "  + current_directory + " directory: ")
     current_directory_dict = get_directory_from_path(directories_dict, current_directory)
-    print(print_directory_tree(current_directory_dict))
+    print_directory_tree(current_directory_dict)
     print('==============================================')
     print('What operation would you like to do?')
     print('For reading a file, write "read" then the file name')
@@ -134,6 +134,8 @@ def is_valid_path(directories_dict, current_directory, path):
 
 
 def receive_tree_from_server(client):
+    # send get tree request
+    # client.send(b'<Get Tree>')
     directories_dict = client.recv(4096)
     directories_dict = pickle.loads(directories_dict)
     return directories_dict
@@ -147,11 +149,11 @@ print('Connecting to the server...')
 def client_main_app(client):
     current_directory = 'root'
     #Once connected, the client receives the directory tree from the server
-    directories_dict = receive_tree_from_server(client)
+    # directories_dict = receive_tree_from_server(client)
+    directories_dict = client.directories_dict #receive_tree_from_server(client)
     while True:
-        
-
         while True: #loop until valid input
+            # directories_dict = receive_tree_from_server(client)
             try:
                 # Print the files on the server and the operations that can be done
                 prompt_user(directories_dict, current_directory)
@@ -178,7 +180,7 @@ def client_main_app(client):
             #handle if invalid input
             except:
                 print('Invalid input, please try again')
-        import sys        
+            
         if operation == 'exit': sys.exit()    
 
         match operation:
