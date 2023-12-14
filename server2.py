@@ -9,7 +9,7 @@ class Server:
 
     def __init__(self, server_tcp_port):
         self.server_ip = f"{socket.gethostbyname(socket.gethostname())}"
-        self.server_tcp_port = server_tcp_port
+        self.server_tcp_port = self.get_available_port()
         self.is_leader = False
         self.servers = []
         self.leader = None

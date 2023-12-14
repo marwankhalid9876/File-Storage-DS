@@ -1,13 +1,13 @@
 import socket
 import time
 import threading
-import sys
+
 
 class Client:
     SERVER_UDP_PORT = 5000
-    def __init__(self, client_port=5555):
+    def __init__(self):
         self.leader = None
-        self.client_port = client_port
+        self.client_port = self.get_available_port()
         threading.Thread(target=self.listen_for_ack).start()
 
     def discover_leader(self):
@@ -52,11 +52,16 @@ class Client:
 
                 break
             time.sleep(1)
-                    
 
+    def get_available_port(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('', 0))
+            port = s.getsockname()[1]
+        return port
+    
 if __name__ == '__main__':
     
-    client = Client(int(sys.argv[1]))
+    client = Client()
     while True:
         message = input("Enter message: ")
         client.send_message(message)
