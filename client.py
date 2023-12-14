@@ -1,6 +1,8 @@
 import socket
 import os
 import pickle
+import subprocess
+import sys
 
 def check_filename_exists(filename, filenames_on_server):
     if filename not in filenames_on_server:
@@ -21,7 +23,14 @@ def read_file_from_server(file_path, client):
             file_bytes += data
     file.write(file_bytes)
     file.close()
-    os.startfile(filename)
+
+    if sys.platform.startswith('win32'):
+        os.startfile(filename)
+    elif sys.platform.startswith('darwin'):
+        subprocess.run(('open', filename), check=True)
+    elif sys.platform.startswith('linux'):
+        subprocess.run(('xdg-open', filename), check=True)
+
 
 def write_file_to_server(file_path, client):
     try:
@@ -37,6 +46,8 @@ def write_file_to_server(file_path, client):
     except:
         print('An error happened, please try again')
         return False
+
+
 def get_directory_from_path(directories_dict, path):
     if path == 'root':
         return directories_dict
@@ -69,6 +80,7 @@ def have_more_operations():
         return True
     return False
 
+
 def print_directory_tree(directory_tree, indent=0):
     for key, value in directory_tree.items():
         if value is None:
@@ -77,6 +89,7 @@ def print_directory_tree(directory_tree, indent=0):
             print('  ' * indent + f'- {key} (directory)')
             print_directory_tree(value, indent + 1)
 
+
 def cd_back_steps(current_directory , path):
     path_list = path.split('/')
     for step in path_list:
@@ -84,6 +97,7 @@ def cd_back_steps(current_directory , path):
             current_directory = '/'.join(current_directory.split('/')[:-1])
             path_list = path_list[1:]
     return current_directory, '/'.join(path_list)
+
 
 def is_valid_directory(directories_dict, current_directory, directory_path):
     #get rid of back steps
@@ -103,6 +117,7 @@ def is_valid_directory(directories_dict, current_directory, directory_path):
         return False
     return True
 
+
 def is_valid_path(directories_dict, current_directory, path):
     #get rid of back steps
     current_directory, directory_path = cd_back_steps(current_directory, path)
@@ -116,6 +131,7 @@ def is_valid_path(directories_dict, current_directory, path):
         else:
             current_directory = current_directory + '/' + directory
     return True
+
 
 def receive_tree_from_server(client):
     directories_dict = client.recv(4096)
@@ -162,8 +178,8 @@ def client_main_app(client):
             #handle if invalid input
             except:
                 print('Invalid input, please try again')
-                
-        if operation == 'exit': break    
+        import sys        
+        if operation == 'exit': sys.exit()    
 
         match operation:
             case 'read':

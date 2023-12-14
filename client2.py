@@ -5,21 +5,18 @@ import sys
 from client import client_main_app
 
 class Client:
-    server_port_list = [8887, 8888, 8889]
-    def __init__(self, server_port, client_port=5555):
-        self.server_port = server_port
+    SERVER_UDP_PORT = 5000
+    def __init__(self):
         self.leader = None
-        self.client_port = client_port
+        self.client_port = self.get_available_port()
         threading.Thread(target=self.listen_for_ack).start()
 
     def discover_leader(self):
         r"""Broadcasts a message to all servers to discover the leader"""
-
-        for port in Client.server_port_list:
-            discovery_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            discovery_socket.sendto(f'WHO_IS_THE_LEADER:{self.client_port}'.encode(), ('255.255.255.255', port))
-            discovery_socket.close()
+        discovery_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        discovery_socket.sendto(f'WHO_IS_THE_LEADER:{self.client_port}'.encode(), ('255.255.255.255', Client.SERVER_UDP_PORT))
+        discovery_socket.close()
     
     def listen_for_ack(self):
         r"""Listens for a response from the leader server"""
@@ -53,18 +50,24 @@ class Client:
                     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     client.connect((self.leader[0], self.server_port))
                     client.send('I AM CLIENT'.encode())
-                    client_main_app(client)
+                    threading.Thread(target=client_main_app, args=(client,)).start()
 
                 except Exception as e:
                     print(f"An error occurred: {e}")
                 break
             time.sleep(1)
-                    
 
+    def get_available_port(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('', 0))
+            port = s.getsockname()[1]
+        return port
+    
 if __name__ == '__main__':
     
-    client = Client(int(sys.argv[1]), int(sys.argv[2]))
+    client = Client()
     # while True:
         # message = input("Enter message: ")
     client.initiate_operation()
+
         #threading.Thread(target=client.send_message, args=(message,)).start()    
