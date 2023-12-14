@@ -153,7 +153,7 @@ class Server:
         _, port = message.split(':')
         # send back I_AM_THE_LEADER:{port} if self.is_leader, otherwise do not respond
         if self.is_leader:
-            tree = build_directory_tree('sender_folder/')
+            tree = build_directory_tree('DB/')
             import json
             tree = json.dumps(tree)
             tree = f"TREE:{tree}"

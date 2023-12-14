@@ -36,6 +36,10 @@ def receive_write_file(filename, client):
         return False
     
 def build_directory_tree(directory):
+    # create directory if it doesn't exist
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+        
     result = {}
     for item in os.listdir(directory):
         item_path = os.path.join(directory, item)
