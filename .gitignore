@@ -1,0 +1,4 @@
+sender_folder/*
+*.txt
+__pycache__/*
+*/__pycache__/*

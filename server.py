@@ -3,7 +3,8 @@ import threading
 import time
 
 import sys
-from utils.server import server_main_app
+from utils.utils_server import server_main_app, build_directory_tree
+import pickle
 
 class Server:
 
@@ -63,6 +64,8 @@ class Server:
                 print("Message Content: ", message)
                 print("Message Processed")
                 # server_main_app(client_socket)
+                # handel requests
+                # get_stuff(message, addr)
                 threading.Thread(target=server_main_app, args=(client_socket,)).start()
 
             else:
@@ -90,8 +93,10 @@ class Server:
                 threading.Thread(target=self.handel_ok, args=(addr, decoded_message)).start()
             elif decoded_message.startswith('HEARTBEAT'):
                 threading.Thread(target=self.handel_heartbeat, args=(addr, decoded_message)).start()
-            else:
-                print(f"Received from Leader: {decoded_message}")
+            elif decoded_message.startswith('GET_TREE'):
+                threading.Thread(target=self.handel_get_tree, args=(addr, decoded_message)).start()
+            # else:
+            #     print(f"Received from Leader: {decoded_message}")
 
     def handel_discover_broadcast(self, addr, message):
 
@@ -143,6 +148,22 @@ class Server:
         _, port = message.split(':')
         # print("Received HEARTBEAT")
         self.last_heartbeat[f"{addr[0]}:{port}"] = time.time()
+
+    def handel_get_tree(self, addr, message):
+        _, port = message.split(':')
+        # send back I_AM_THE_LEADER:{port} if self.is_leader, otherwise do not respond
+        if self.is_leader:
+            tree = build_directory_tree('sender_folder/')
+            import json
+            tree = json.dumps(tree)
+            tree = f"TREE:{tree}"
+
+            send_ack_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            # get available port
+            send_ack_socket.bind((self.server_ip, 0))
+            # should send server ip not port
+            send_ack_socket.sendto(tree.encode(), (addr[0], int(port)))
+            send_ack_socket.close()
 
     def elect_leader(self):
         self.previous_leadership = self.is_leader
@@ -216,8 +237,8 @@ class Server:
         print("*"*20)
 
     def start(self):
-        threading.Thread(target=self.listen_for_UDP).start()
-        threading.Thread(target=self.listen_for_TCP).start()
+        threading.Thread(target=self.listen_for_UDP, daemon=True).start()
+        threading.Thread(target=self.listen_for_TCP, daemon=True).start()
 
         self.discover_hosts()
         time.sleep(2)
@@ -227,10 +248,12 @@ class Server:
         self.elect_leader()
         time.sleep(2)
         #threading.Thread(target=self.heartbeat).start()
-        threading.Thread(target=self.send_heartbeat).start()
-        threading.Thread(target=self.check_last_heartbeat).start()
+        threading.Thread(target=self.send_heartbeat, daemon=True).start()
+        threading.Thread(target=self.check_last_heartbeat, daemon=True).start()
         print("Server Started...")
 
 if __name__ == '__main__':
     server = Server()
     server.start()
+    while True:
+        pass
