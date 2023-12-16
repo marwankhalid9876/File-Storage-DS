@@ -51,7 +51,7 @@ class Server:
         while True:
             client_socket, addr = listen_socket.accept()
             message = client_socket.recv(1024).decode()
-            print(f"Received message from {message.strip()}")
+            print(f"Received message: {message.strip()}")
             if message == 'HEARTBEAT':
                 continue
 
@@ -62,13 +62,13 @@ class Server:
 
             elif message.startswith('read'):
                 print("Received READ")
-                threading.Thread(target=self.handel_read, args=(addr, message)).start()
+                threading.Thread(target=self.handel_read_file, args=(addr, message)).start()
                 continue
 
             elif message.startswith('write'):
                 print("Received WRITE")
                 #self.handel_write(addr, message, client_socket)
-                threading.Thread(target=self.handel_write, args=(addr, message, client_socket)).start()
+                threading.Thread(target=self.handel_write_file, args=(addr, message, client_socket)).start()
                 continue
 
             if self.is_leader:
@@ -99,7 +99,7 @@ class Server:
             #print(f"Received response from {addr}")
             decoded_message = message.decode()
             if decoded_message.startswith('DISCOVER'):
-                threading.Thread(target=self.handel_discover_broadcast, args=(addr, decoded_message)).start()
+                threading.Thread(target=self.handel_discover, args=(addr, decoded_message)).start()
             elif decoded_message.startswith('WHO_IS_THE_LEADER'):
                 threading.Thread(target=self.handel_who_is_leader, args=(addr, decoded_message)).start()
             elif decoded_message.startswith('OK'):
@@ -111,7 +111,7 @@ class Server:
             # else:
             #     print(f"Received from Leader: {decoded_message}")
 
-    def handel_discover_broadcast(self, addr, message):
+    def handel_discover(self, addr, message):
 
         _, port = message.split(':')
 
@@ -170,7 +170,7 @@ class Server:
             send_ack_socket.send(tree.encode())
             send_ack_socket.close()
 
-    def handel_read(self, addr, message):
+    def handel_read_file(self, addr, message):
         r"""Sends the File to the client"""
 
         operation, port, file_path = message.split(':')
@@ -182,14 +182,14 @@ class Server:
         utils.send_file(file_path, send_file_socket)
         send_file_socket.close()
 
-    def handel_write(self, addr, message, client_socket):
+    def handel_write_file(self, addr, message, client_socket):
         r""""""
 
         operation, port, file_path = message.split(':')
         file_path = file_path.strip()
         port = int(port)
 
-        self.receive_file(file_path, client_socket)
+        utils.receive_file(file_path, client_socket)
 
         # inform other servers to update their files
         
@@ -198,29 +198,6 @@ class Server:
         send_done_socket.connect((addr[0], int(port)))
         send_done_socket.send("<DONE>".encode())
         send_done_socket.close()
-
-    def receive_file(self, filename, client_socket):
-        try:
-            data = client_socket.recv(1024).decode()
-            # if data.endswith('<Cancel>'): # If the client cancelled the update operation
-            #     return True # Return True because client cancelled the operation but didn't disconnect
-            print('RECEIVED DATA: '+data)
-            print('filename: '+filename)
-            
-            with open('DB'+filename, 'w') as f: 
-                file_content = ""
-                while True:
-                    if data.endswith('<End>'):
-                        data = data[:-5]
-                        file_content += data
-                        break
-                    else:
-                        file_content += data
-                    data = client_socket.recv(1024).decode()
-                f.write(file_content)
-
-        except ConnectionResetError:#If the client disconnected
-            print('CLIENT DISCONNECTED')
 
     def elect_leader(self):
         self.previous_leadership = self.is_leader

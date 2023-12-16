@@ -1,5 +1,4 @@
 import os
-import socket
 import pickle
 
 def send_file(file_path, client):
@@ -16,25 +15,31 @@ def send_file(file_path, client):
     except ConnectionResetError:#If the client disconnected
         return False
 
-def receive_write_file(filename, client):
+
+def receive_file(filename, client_socket):
     try:
-        data = client.recv(1024).decode()
+        data = client_socket.recv(1024).decode()
         # if data.endswith('<Cancel>'): # If the client cancelled the update operation
         #     return True # Return True because client cancelled the operation but didn't disconnect
         print('RECEIVED DATA: '+data)
         print('filename: '+filename)
-        with open('DB'+filename, 'wb') as file:
-            while data:
-                if data.endswith(b'<End>'):
+        
+        with open('DB'+filename, 'w') as f: 
+            file_content = ""
+            while True:
+                if data.endswith('<End>'):
                     data = data[:-5]
-                    file.write(data)
+                    file_content += data
                     break
-                print('RECEIVED DATA: '+data)
-                file.write(data)
+                else:
+                    file_content += data
+                data = client_socket.recv(1024).decode()
+            f.write(file_content)
 
     except ConnectionResetError:#If the client disconnected
         print('CLIENT DISCONNECTED')
-    
+  
+
 def build_directory_tree(directory):
     # create directory if it doesn't exist
     if not os.path.exists(directory):
@@ -48,6 +53,7 @@ def build_directory_tree(directory):
         else:
             result[item] = None  # You can set it to a specific value or leave it as None
     return result
+
 
 def send_tree_to_client(client):
     tree = build_directory_tree('sender_folder/')
