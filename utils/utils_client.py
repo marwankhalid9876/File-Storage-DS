@@ -4,6 +4,9 @@ import pickle
 import subprocess
 import sys
 
+import warnings
+warnings.filterwarnings("ignore")
+
 def check_filename_exists(filename, filenames_on_server):
     if filename not in filenames_on_server:
         print('File not found, please try again')
@@ -11,18 +14,22 @@ def check_filename_exists(filename, filenames_on_server):
     return True
 
 
-def read_file_from_server(file_path, client):
-    filename = file_path.split('/')[-1]
-    file = open(filename, 'wb')#extract filename from path
-    file_bytes = b""
-    while True:
-        data = client.recv(1024)
-        if data[-5:] == b'<End>':
-            break
-        else:
-            file_bytes += data
-    file.write(file_bytes)
-    file.close()
+def read_file_from_server(filename, client):
+    if not os.path.exists('locals'):
+        os.makedirs('locals')
+
+    filename = f"locals/{filename}"
+    with open(filename, 'w') as f: 
+        file_bytes = ""
+        while True:
+            data = client.recv(1024).decode()
+            print('data')
+            if data[-5:] == '<End>':
+                break
+            else:
+                file_bytes += data
+        f.write(file_bytes)
+        print('File received successfully')
 
     if sys.platform.startswith('win32'):
         os.startfile(filename)
@@ -35,17 +42,14 @@ def read_file_from_server(file_path, client):
 def write_file_to_server(file_path, client):
     try:
         filename = file_path.split('/')[-1]
-        file = open(filename, 'rb')
-        data = file.read(1024)
-        while data:
-            client.send(data)
+        with open(f"locals/{filename}", 'rb') as file:
             data = file.read(1024)
-        client.send(b'<End>')
-        file.close()
-        return True
+            while data:
+                client.send(data)
+                data = file.read(1024)
+            client.send('<End>'.encode())
     except:
         print('An error happened, please try again')
-        return False
 
 
 def get_directory_from_path(directories_dict, path):

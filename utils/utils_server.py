@@ -2,14 +2,15 @@ import os
 import socket
 import pickle
 
-def send_file(filename, client):
+def send_file(file_path, client):
     try:
-        file = open('sender_folder/'+filename, 'rb')
+        file = open('DB/'+file_path, 'rb')
         data = file.read(1024)
+
         while data:
             client.send(data)
             data = file.read(1024)
-        client.send(b'<End>')
+        client.send('<End>'.encode())
         file.close()
         return True
     except ConnectionResetError:#If the client disconnected
@@ -17,23 +18,22 @@ def send_file(filename, client):
 
 def receive_write_file(filename, client):
     try:
-        data = client.recv(1024)
-        if data.endswith(b'<Cancel>'): # If the client cancelled the update operation
-            return True # Return True because client cancelled the operation but didn't disconnect
-        file = open('sender_folder/'+filename, 'wb')
-        while data:
-            if data.endswith(b'<End>'):
-                data = data[:-5]
+        data = client.recv(1024).decode()
+        # if data.endswith('<Cancel>'): # If the client cancelled the update operation
+        #     return True # Return True because client cancelled the operation but didn't disconnect
+        print('RECEIVED DATA: '+data)
+        print('filename: '+filename)
+        with open('DB'+filename, 'wb') as file:
+            while data:
+                if data.endswith(b'<End>'):
+                    data = data[:-5]
+                    file.write(data)
+                    break
+                print('RECEIVED DATA: '+data)
                 file.write(data)
-                break
-            file.write(data)
-            data = client.recv(1024)
-        file.close()
-        send_tree_to_client(client)
-        client.send(b'<Done>') #Acknowledge the client that the operation is done
-        return True
+
     except ConnectionResetError:#If the client disconnected
-        return False
+        print('CLIENT DISCONNECTED')
     
 def build_directory_tree(directory):
     # create directory if it doesn't exist

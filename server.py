@@ -3,8 +3,8 @@ import threading
 import time
 
 import sys
-from utils.utils_server import server_main_app, build_directory_tree
-import pickle
+import utils.utils_server as utils
+import json
 
 class Server:
 
@@ -51,7 +51,24 @@ class Server:
         while True:
             client_socket, addr = listen_socket.accept()
             message = client_socket.recv(1024).decode()
+            print(f"Received message from {message.strip()}")
             if message == 'HEARTBEAT':
+                continue
+
+            elif message.startswith('GET_TREE'):
+                print("Received GET_TREE")
+                threading.Thread(target=self.handel_get_tree, args=(addr, message)).start()
+                continue
+
+            elif message.startswith('read'):
+                print("Received READ")
+                threading.Thread(target=self.handel_read, args=(addr, message)).start()
+                continue
+
+            elif message.startswith('write'):
+                print("Received WRITE")
+                #self.handel_write(addr, message, client_socket)
+                threading.Thread(target=self.handel_write, args=(addr, message, client_socket)).start()
                 continue
 
             if self.is_leader:
@@ -66,14 +83,10 @@ class Server:
                 # server_main_app(client_socket)
                 # handel requests
                 # get_stuff(message, addr)
-                threading.Thread(target=server_main_app, args=(client_socket,)).start()
+                # threading.Thread(target=utils.server_main_app, args=(client_socket,)).start()
 
             else:
                 print("Message received from Leader")
-
-            # do what ever you have to do
-            print("Message Content: ", message)
-            print("Message Processed")
 
     def listen_for_UDP(self):
         print("Listening for UDP Messages...")
@@ -93,8 +106,8 @@ class Server:
                 threading.Thread(target=self.handel_ok, args=(addr, decoded_message)).start()
             elif decoded_message.startswith('HEARTBEAT'):
                 threading.Thread(target=self.handel_heartbeat, args=(addr, decoded_message)).start()
-            elif decoded_message.startswith('GET_TREE'):
-                threading.Thread(target=self.handel_get_tree, args=(addr, decoded_message)).start()
+            # elif decoded_message.startswith('GET_TREE'):
+            #     threading.Thread(target=self.handel_get_tree, args=(addr, decoded_message)).start()
             # else:
             #     print(f"Received from Leader: {decoded_message}")
 
@@ -122,16 +135,10 @@ class Server:
         print("Received WHO_IS_LEADER")
         # send back I_AM_THE_LEADER:{port} if self.is_leader, otherwise do not respond
         if self.is_leader:
-            # send_ack_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            # send_ack_socket.connect((addr[0], int(port)))
-            # send_ack_socket.send(f'I_AM_THE_LEADER:{self.server_port}'.encode())
-            # send_ack_socket.close()
-
-            send_ack_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            # get available port
+            send_ack_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             send_ack_socket.bind((self.server_ip, 0))
-            # should send server ip not port
-            send_ack_socket.sendto(f'I_AM_THE_LEADER:{self.server_tcp_port}'.encode(), (addr[0], int(port)))
+            send_ack_socket.connect((addr[0], int(port)))
+            send_ack_socket.send(f'I_AM_THE_LEADER:{self.server_tcp_port}'.encode())
             send_ack_socket.close()
 
     def handel_ok(self, addr, message):
@@ -150,20 +157,70 @@ class Server:
         self.last_heartbeat[f"{addr[0]}:{port}"] = time.time()
 
     def handel_get_tree(self, addr, message):
+        r"""Sends the directory tree to the client"""
+
         _, port = message.split(':')
-        # send back I_AM_THE_LEADER:{port} if self.is_leader, otherwise do not respond
         if self.is_leader:
-            tree = build_directory_tree('DB/')
-            import json
+            tree = utils.build_directory_tree('DB/')
             tree = json.dumps(tree)
             tree = f"TREE:{tree}"
 
-            send_ack_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            # get available port
-            send_ack_socket.bind((self.server_ip, 0))
-            # should send server ip not port
-            send_ack_socket.sendto(tree.encode(), (addr[0], int(port)))
+            send_ack_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            send_ack_socket.connect((addr[0], int(port)))
+            send_ack_socket.send(tree.encode())
             send_ack_socket.close()
+
+    def handel_read(self, addr, message):
+        r"""Sends the File to the client"""
+
+        operation, port, file_path = message.split(':')
+        port = int(port)
+
+        send_file_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        send_file_socket.connect((addr[0], int(port)))
+        send_file_socket.send(f"FILE:{file_path.split('/')[-1]}".encode())
+        utils.send_file(file_path, send_file_socket)
+        send_file_socket.close()
+
+    def handel_write(self, addr, message, client_socket):
+        r""""""
+
+        operation, port, file_path = message.split(':')
+        file_path = file_path.strip()
+        port = int(port)
+
+        self.receive_file(file_path, client_socket)
+
+        # inform other servers to update their files
+        
+        # send <DONE> to client
+        send_done_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        send_done_socket.connect((addr[0], int(port)))
+        send_done_socket.send("<DONE>".encode())
+        send_done_socket.close()
+
+    def receive_file(self, filename, client_socket):
+        try:
+            data = client_socket.recv(1024).decode()
+            # if data.endswith('<Cancel>'): # If the client cancelled the update operation
+            #     return True # Return True because client cancelled the operation but didn't disconnect
+            print('RECEIVED DATA: '+data)
+            print('filename: '+filename)
+            
+            with open('DB'+filename, 'w') as f: 
+                file_content = ""
+                while True:
+                    if data.endswith('<End>'):
+                        data = data[:-5]
+                        file_content += data
+                        break
+                    else:
+                        file_content += data
+                    data = client_socket.recv(1024).decode()
+                f.write(file_content)
+
+        except ConnectionResetError:#If the client disconnected
+            print('CLIENT DISCONNECTED')
 
     def elect_leader(self):
         self.previous_leadership = self.is_leader
