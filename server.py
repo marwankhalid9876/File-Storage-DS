@@ -5,6 +5,7 @@ import time
 import sys
 import utils.utils_server as utils
 import json
+import os
 
 class Server:
 
@@ -23,6 +24,13 @@ class Server:
         self.HEARTBEAT_SOCKET = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.HEARTBEAT_SOCKET.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         self.HEARTBEAT_SOCKET.bind((self.server_ip, 0)) # bind to a random available port
+
+        # Format the directory name
+        self.dir_name = f"DBs/DB_{self.server_tcp_port}"        #if exists, delete it
+        if os.path.exists(self.dir_name):
+            os.rmdir(self.dir_name)
+        os.makedirs(self.dir_name)
+
 
     def broadcast_message(self, message):
         for server in self.servers:
@@ -70,6 +78,19 @@ class Server:
                 #self.handel_write(addr, message, client_socket)
                 threading.Thread(target=self.handel_write_file, args=(addr, message, client_socket)).start()
                 continue
+            elif message.startswith('first update'):
+                print("Received First Step of UPDATE")
+                threading.Thread(target=self.handel_read_file, args=(addr, message)).start()
+                #give token to client
+            elif message.startswith('second update'):
+                print("Received Second Step of UPDATE")
+                threading.Thread(target=self.handel_write_file, args=(addr, message, client_socket)).start()
+                #take token from client
+            elif message.startswith('delete'):
+                print("Received DELETE")
+                threading.Thread(target=self.handel_delete_file, args=(addr, message)).start()
+                continue
+            
 
             if self.is_leader:
                 # if leader, broadcast message to all servers
@@ -161,7 +182,7 @@ class Server:
 
         _, port = message.split(':')
         if self.is_leader:
-            tree = utils.build_directory_tree('DB/')
+            tree = utils.build_directory_tree(self.dir_name)
             tree = json.dumps(tree)
             tree = f"TREE:{tree}"
 
@@ -182,6 +203,27 @@ class Server:
         utils.send_file(file_path, send_file_socket)
         send_file_socket.close()
 
+    def handel_delete_file(self, addr, message):
+        r"""Deletes the file from the server"""
+
+        operation, port, file_path = message.split(':')
+        port = int(port)
+
+        relative_path = self.dir_name + file_path
+        #delete the file in DB/file_path; handle deletion on all OSs
+        if os.path.exists(relative_path):
+            os.remove(relative_path)
+            print(f"File {relative_path} has been deleted.")
+        else:
+            print(f"The file {relative_path} does not exist.")
+        # inform other servers to update their files
+        
+        # send <DONE> to client
+        send_done_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        send_done_socket.connect((addr[0], int(port)))
+        send_done_socket.send("<DONE>".encode())
+        send_done_socket.close()
+
     def handel_write_file(self, addr, message, client_socket):
         r""""""
 
@@ -189,7 +231,7 @@ class Server:
         file_path = file_path.strip()
         port = int(port)
 
-        utils.receive_file(file_path, client_socket)
+        utils.receive_file(file_path, client_socket, self.dir_name)
 
         # inform other servers to update their files
         
@@ -218,6 +260,7 @@ class Server:
 
         while True:
             dead_servers = []
+            print(self.servers)
             # send to servers with larger ip only
             #sorted_servers = sorted(self.servers, key=lambda x: x['ip'])
             for server in self.servers:
@@ -285,6 +328,8 @@ class Server:
         threading.Thread(target=self.send_heartbeat, daemon=True).start()
         threading.Thread(target=self.check_last_heartbeat, daemon=True).start()
         print("Server Started...")
+    
+    
 
 if __name__ == '__main__':
     server = Server()

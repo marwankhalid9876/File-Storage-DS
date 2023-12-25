@@ -6,11 +6,24 @@ import utils.utils_client as utils
 import os
 import json
 import uuid
+import subprocess
 
+base_dir = os.path.dirname(__file__)
+
+def open_file(filename):
+        r"""Opens a file on the client side"""
+        full_path = os.path.join(base_dir, "locals", filename)
+        # Open the file depending on the operating system
+        if sys.platform.startswith('win32'):
+            os.startfile(full_path)
+        elif sys.platform.startswith('darwin'):
+            subprocess.run(('open', full_path), check=True)
+        elif sys.platform.startswith('linux'):
+            subprocess.run(('xdg-open', full_path), check=True)
 
 class Client:
     SERVER_UDP_PORT = 5000
-    UPLOAD_TIMEOUT = 5
+    UPLOAD_DELETE_TIMEOUT = 5
     def __init__(self):
         self.leader_ip = None
         self.client_port = self.get_available_port()
@@ -50,6 +63,7 @@ class Client:
             elif message.startswith('FILE'):
                 filename = message.split(':')[1]
                 utils.read_file_from_server(filename, client_socket)
+                open_file(filename)
             elif message.startswith('<DONE>'):
                 self.operation_done_flag = True
 
@@ -126,14 +140,15 @@ class Client:
 
                 now = time.time()
                 end = now
-                while end - now < Client.UPLOAD_TIMEOUT:
+                while end - now < Client.UPLOAD_DELETE_TIMEOUT:
                     if self.operation_done_flag:
                         break
                     end = time.time()
 
                 if not self.operation_done_flag:
                     print('Could not write to the server')
-                    print('Trying again...')
+                    if input('Do you want to try again? (y/n) \n') != 'y':
+                        break
                     # we can set a counter here to try a certain number of times
                     continue
 
@@ -163,6 +178,8 @@ class Client:
                     print("No leader found")
                 else:
                     self.get_tree()
+                    #sleep until you get the tree
+                    time.sleep(1)
                     self.leader_ip = None
                     break
 
@@ -197,38 +214,56 @@ class Client:
                                 do_another_operation = False
                             break
 
-                        case 'update':         
-                            operation_path = operation + ' ' + current_directory + '/' + filename       
-                            client.send(operation_path.encode())
-                            print('The file will now be opened automatically, please make your changes and save the file')
-                            utils.read_file_from_server(operation_path, client)
+                        case 'update':       
+                            operation_path = f"{operation}:{self.client_port}:{self.current_directory}/{filename}"
+                            #send first message of update: first message is a read message
+                            self.send_TCP_message("first " + operation_path)
+                            self.leader_ip = None
                             while True:
                                 user_done = input('Once you are done, please close the file and enter "y" \n') == 'y'
                                 if user_done:
-                                    utils.write_file_to_server(filename, client)
-                                    directories_dict = utils.receive_tree_from_server(client)        
-                                    print(client.recv(1024).decode())#print the server response
+                                    #send second message of update: second message is a write message
+                                    #discover leader again
+                                    while True:
+                                        self.discover_leader()
+                                        time.sleep(1)
+                                        if not self.leader_ip is None:
+                                            break
+                                        print("No leader found")
+                                    self.upload_file("second " + operation, filename)
                                     break
                                 else: 
                                     if input('Are you sure you want to exit without updating the file on the server? (y/n) \n') == 'y':
-                                        client.send(b'<Cancel>')#inform server that update was cancelled
                                         break
-                            
                             if input('Do you want to do more operations? (y/n) \n') != 'y':
-                                # client.send(b'<Continue>')#inform server that I want to do more operations
                                 do_another_operation = False
                             break
                         case 'delete':
-                            # if check_filename_exists(filename, filenames_in_directory) == False:
-                            #     continue
-                            operation_path = operation + ' ' + current_directory + '/' + filename
-                            client.send(operation_path.encode())
-                            directories_dict = utils.receive_tree_from_server(client)
-                            print("These are the files currently in the server "  + str(directories_dict) + " directory: ")
-                            print(client.recv(1024).decode())#print the server response <Done>   
-                                            
+                            operation_path = f"{operation}:{self.client_port}:{self.current_directory}/{filename}"
+                           
+                            while True:
+                                self.send_TCP_message(operation_path)
+                                self.leader_ip = None
+                                self.operation_done_flag = False
+                                print('Waiting for the file to be deleted from the server...')
+                                #sleep for 5 seconds to make sure the file is deleted
+                                now = time.time()
+                                end = now
+                                while end - now < Client.UPLOAD_DELETE_TIMEOUT:
+                                    if self.operation_done_flag:
+                                        break
+                                    end = time.time()
+
+                                if self.operation_done_flag:
+                                    print('The file was successfully deleted from the server')
+                                else:
+                                    print('Could not delete the file from the server because of an error. Please try again!')
+                                    if input('Do you want to try again? (y/n) \n') != 'y':
+                                        continue
+                                break
+                                
+
                             if input('Do you want to do more operations? (y/n) \n') != 'y':
-                                # client.send(b'<Continue>')#inform server that I want to do more operations
                                 do_another_operation = False
                             break
                         case 'cd':
@@ -246,6 +281,7 @@ class Client:
                     #     print(f"An error occurred: {e}")
 
                 time.sleep(1)
+
 
     def get_available_port(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

@@ -16,7 +16,7 @@ def send_file(file_path, client):
         return False
 
 
-def receive_file(filename, client_socket):
+def receive_file(filename, client_socket, dir_name):
     try:
         data = client_socket.recv(1024).decode()
         # if data.endswith('<Cancel>'): # If the client cancelled the update operation
@@ -24,7 +24,7 @@ def receive_file(filename, client_socket):
         print('RECEIVED DATA: '+data)
         print('filename: '+filename)
         
-        with open('DB'+filename, 'w') as f: 
+        with open(dir_name + '/' +filename, 'w') as f: 
             file_content = ""
             while True:
                 if data.endswith('<End>'):
@@ -44,7 +44,6 @@ def build_directory_tree(directory):
     # create directory if it doesn't exist
     if not os.path.exists(directory):
         os.makedirs(directory)
-        
     result = {}
     for item in os.listdir(directory):
         item_path = os.path.join(directory, item)
@@ -128,7 +127,7 @@ def server_main_app(client):
                     print('READ REQUEST SERVED!')
                 case 'write':
                     print('RECEIVING FILE...')
-                    success = receive_write_file(path, client)
+                    success = receive_file(path, client)
                     if not success:
                         print('CLIENT DISCONNECTED')
                         connection_opened = False
@@ -145,7 +144,7 @@ def server_main_app(client):
                         break
                     print('FILE STATUS SENT!')
                     print('RECEIVING UPDATED FILE...')
-                    success = receive_write_file(path, client)
+                    success = receive_file(path, client)
                     if not success:
                         print('CLIENT DISCONNECTED')
                         connection_opened = False

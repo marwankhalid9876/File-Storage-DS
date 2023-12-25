@@ -31,12 +31,12 @@ def read_file_from_server(filename, client):
         f.write(file_bytes)
         print('File received successfully')
 
-    if sys.platform.startswith('win32'):
-        os.startfile(filename)
-    elif sys.platform.startswith('darwin'):
-        subprocess.run(('open', filename), check=True)
-    elif sys.platform.startswith('linux'):
-        subprocess.run(('xdg-open', filename), check=True)
+    # if sys.platform.startswith('win32'):
+    #     os.startfile(filename)
+    # elif sys.platform.startswith('darwin'):
+    #     subprocess.run(('open', filename), check=True)
+    # elif sys.platform.startswith('linux'):
+    #     subprocess.run(('xdg-open', filename), check=True)
 
 
 def write_file_to_server(file_path, client):
