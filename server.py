@@ -107,7 +107,14 @@ class Server:
 
             #FOR BULLY
             elif message.startswith('COORDINATOR'):
-                self.handel_coordinator(addr, message)
+                _, ip, port = message.split(':')
+                #if I deserve to be leader more than the sender, I start an election
+                if f"{ip}:{port}" < f"{self.server_ip}:{str(self.server_tcp_port)}":
+                    print("Starting election because I deserve to be leader more than the COORDINATOR sender")
+                    self.ELECTION_IN_PROGRESS = True
+                    threading.Thread(target=self.start_bully).start()
+                else:
+                    self.handel_coordinator(addr, message)
                 # threading.Thread(target=self.handel_coordinator, args=(addr, message)).start()
             elif message.startswith('ELECT'):
                 # self.handel_elect(addr, message)
