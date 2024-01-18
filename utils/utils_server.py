@@ -35,6 +35,8 @@ def receive_file(filename, client_socket, dir_name):
                     file_content += data
                 data = client_socket.recv(1024).decode()
             f.write(file_content)
+        
+        return file_content
 
     except ConnectionResetError:#If the client disconnected
         print('CLIENT DISCONNECTED')
