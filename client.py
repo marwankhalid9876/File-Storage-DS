@@ -111,11 +111,15 @@ class Client:
 
     def send_TCP_message(self, message):
         if self.leader_ip is not None:
-            send_tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            send_tcp_socket.bind((self.client_ip, 0))
-            send_tcp_socket.connect(((self.leader_ip, self.server_port)))
-            send_tcp_socket.send(message.encode())
-            send_tcp_socket.close()
+            try:
+                send_tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                send_tcp_socket.bind((self.client_ip, 0))
+                send_tcp_socket.connect(((self.leader_ip, self.server_port)))
+                send_tcp_socket.send(message.encode())
+                send_tcp_socket.close()
+            except Exception as e:
+                print(f"An error occurred: {e}")
+                print('Try again...')
 
     def upload_file(self, operation, file_path, local_folder='locals'):
         # Generate a random UUID
@@ -123,11 +127,15 @@ class Client:
             self.operation_done_flag = False
             operation_path = f"{operation}:{self.client_port}:{self.current_directory}/{file_path}"
             header = f"{operation_path:<1024}" # 1024 is the size of the header
-
-            send_file_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            send_file_socket.bind((self.client_ip, 0))
-            send_file_socket.connect(((self.leader_ip, self.server_port)))
-            send_file_socket.send(header.encode())
+            try:
+                send_file_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                send_file_socket.bind((self.client_ip, 0))
+                send_file_socket.connect(((self.leader_ip, self.server_port)))
+                send_file_socket.send(header.encode())
+            except Exception as e:
+                print(f"An error occurred: {e}")
+                print('Try again...')
+                continue
 
             try:
                 filename = file_path.split('/')[-1]

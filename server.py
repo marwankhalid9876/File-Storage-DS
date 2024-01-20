@@ -6,6 +6,7 @@ import sys
 import utils.utils_server as utils
 import json
 import os
+import ast
 
 class Server:
 
@@ -47,8 +48,10 @@ class Server:
         os.makedirs(self.dir_name)
 
     def multicast_message(self, message):
-        # message OPERTAION_LEADER_<OP>:operation:port:file_path
-        message = f"{message}:{self.leader_messages_counter-1}"
+        # message OPERTAION_LEADER_<OP>:file_path:file_content(optional):counter
+        self.leader_messages_counter += 1
+        self.messages_received_from_leader[f"{self.leader_messages_counter}"] = message
+        message = f"{message}:{self.server_tcp_port}:{self.leader_messages_counter}"
         # Broadcast the message to all servers
         self.broadcast_socket.sendto(f'{message}'.encode(), ('<broadcast>', Server.SERVER_UDP_PORT))
 
@@ -117,6 +120,36 @@ class Server:
                 threading.Thread(target=self.handel_elect, args=(addr, message)).start()
             elif message.startswith('ANSWER'):
                 self.ANSWER_RECEIVED = True
+            elif message.startswith('RESEND'):
+                print("Received RESEND")
+                threading.Thread(target=self.handel_resend, args=(addr, message)).start()
+            elif message.startswith('OPERATION_LEADER_DELETE'):
+                if not self.is_leader:
+                    threading.Thread(target=self.handel_delete_file_non_leader, args=(addr, message)).start()
+            elif message.startswith('OPERATION_LEADER_WRITE'):
+                if not self.is_leader:
+                    threading.Thread(target=self.handel_write_file_non_leader, args=(addr, message)).start()
+    
+    def handel_resend(self, addr, message):
+        _, missing_messages, sender_port = message.split(':')
+        sender_port = int(sender_port)
+        missing_messages = ast.literal_eval(missing_messages)
+        print(self.messages_received_from_leader)
+        print(message)
+        for i in missing_messages:
+            #Do I really have this message? If not, ignore
+            if str(i) not in self.messages_received_from_leader.keys():
+                continue
+            #If I have this message, resend it to addr
+            message_to_be_sent = self.messages_received_from_leader[f"{i}"]
+            message_to_be_sent = f"{message_to_be_sent}:{self.server_tcp_port}:{i}"
+            send_tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            send_tcp_socket.bind((self.server_ip, 0))
+            try:
+                send_tcp_socket.connect(((addr[0], sender_port)))
+                send_tcp_socket.send(message_to_be_sent.encode())
+            except socket.error as e:
+                print("Could not connect to RESEND requester: ", server)            
                 
     def handel_coordinator(self, addr, message):
         _, ip, port = message.split(':')
@@ -160,16 +193,43 @@ class Server:
             elif decoded_message.startswith('OPERATION_LEADER_DELETE'):
                 if not self.is_leader:
                     threading.Thread(target=self.handel_delete_file_non_leader, args=(addr, decoded_message)).start()
+                    # pass
             elif decoded_message.startswith('OPERATION_LEADER_WRITE'):
                 if not self.is_leader:
                     threading.Thread(target=self.handel_write_file_non_leader, args=(addr, decoded_message)).start()
+                    # pass
             elif decoded_message.startswith('HEARTBEAT'):
                 threading.Thread(target=self.handel_heartbeat, args=(addr, decoded_message)).start()
+                threading.Thread(target=self.handel_acks, args=(addr, decoded_message)).start()
             # elif decoded_message.startswith('GET_TREE'):
             #     threading.Thread(target=self.handel_get_tree, args=(addr, decoded_message)).start()
             # else:
             #     print(f"Received from Leader: {decoded_message}")
+    def handel_acks(self, addr, message):
+        _, port, last_message = message.split(':')
+        if int(last_message) > self.leader_messages_counter:
+            print("bad ack received from " + addr[0] + ":" + port)
+            self.request_resend(addr, port,int(last_message))
     
+    def request_resend(self, addr, port, last_message):
+
+        missing_messages = [] 
+        #get the indices of messages that are missing
+        for i in range(self.leader_messages_counter+1, last_message+1):
+            if str(i) not in self.messages_received_from_leader.keys():
+                missing_messages.append(i)
+        try:
+            # Create a socket object
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # Connect to the sender using their IP address and port
+            s.connect((addr[0], int(port)))
+            # Send the "RESEND:missing_messages:port" message
+            s.sendall(f"RESEND:{missing_messages}:{self.server_tcp_port}".encode())
+            # Close the socket
+            s.close()
+        except socket.error as e:
+            print("Could not connect to server: ", server)
+
     def getDB(self, conn):
         '''Receive DB with all files from leader'''
 
@@ -194,25 +254,28 @@ class Server:
         # ... [existing Server class definition] ...
 
         def send_all_files(server_ip, server_port):
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.connect((server_ip, server_port))
-                # Send a signal to indicate the start of file transfer
-                print("Sending DB to new server...")
-                print("new server port: ", str(server_port))
-                s.sendall(b"DB")
-                # Now send the files
-                for filename in os.listdir(self.dir_name):
-                    filepath = os.path.join(self.dir_name, filename)
-                    if os.path.isfile(filepath):
-                        # Send file name
-                        s.sendall(filename.encode() + b"\n")
-                        # Send file data
-                        with open(filepath, 'rb') as file:
-                            file_data = file.read()
-                            s.sendall(file_data + b"\nEOF\n")
-                # Signal the end of the transfer
-                s.sendall(b"EOF\n")
-                print("All files sent.")
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.connect((server_ip, server_port))
+                    # Send a signal to indicate the start of file transfer
+                    print("Sending DB to new server...")
+                    print("new server port: ", str(server_port))
+                    s.sendall(b"DB")
+                    # Now send the files
+                    for filename in os.listdir(self.dir_name):
+                        filepath = os.path.join(self.dir_name, filename)
+                        if os.path.isfile(filepath):
+                            # Send file name
+                            s.sendall(filename.encode() + b"\n")
+                            # Send file data
+                            with open(filepath, 'rb') as file:
+                                file_data = file.read()
+                                s.sendall(file_data + b"\nEOF\n")
+                    # Signal the end of the transfer
+                    s.sendall(b"EOF\n")
+                    print("All files sent.")
+            except socket.error as e:
+                print("Could not connect to server: ", server)
 
 
         _, port = message.split(':')
@@ -235,22 +298,28 @@ class Server:
             # send_ack_socket.bind((self.server_ip, 0))
             # # should send server ip not port
             # send_ack_socket.sendto(f'OK:{self.server_tcp_port}'.encode(), (addr[0], Server.SERVER_UDP_PORT))
-            send_tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            send_tcp_socket.bind((self.server_ip, 0))
-            send_tcp_socket.connect(((addr[0], int(port))))
-            send_tcp_socket.send(f'OK:{self.server_tcp_port}'.encode())
-            send_tcp_socket.close()
+            try:
+                send_tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                send_tcp_socket.bind((self.server_ip, 0))
+                send_tcp_socket.connect(((addr[0], int(port))))
+                send_tcp_socket.send(f'OK:{self.server_tcp_port}'.encode())
+                send_tcp_socket.close()
+            except socket.error as e:
+                print("Could not connect to server: ", server)
             
     def handel_who_is_leader(self, addr, message):
         _, port = message.split(':')
         print("Received WHO_IS_LEADER")
         # send back I_AM_THE_LEADER:{port} if self.is_leader, otherwise do not respond
-        if self.is_leader:
-            send_ack_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            send_ack_socket.bind((self.server_ip, 0))
-            send_ack_socket.connect((addr[0], int(port)))
-            send_ack_socket.send(f'I_AM_THE_LEADER:{self.server_tcp_port}'.encode())
-            send_ack_socket.close()
+        try:
+            if self.is_leader:
+                send_ack_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                send_ack_socket.bind((self.server_ip, 0))
+                send_ack_socket.connect((addr[0], int(port)))
+                send_ack_socket.send(f'I_AM_THE_LEADER:{self.server_tcp_port}'.encode())
+                send_ack_socket.close()
+        except socket.error as e:
+            print("Could not connect to server: ", server)
 
     def handel_ok(self, addr, message):
         _, port = message.split(':')
@@ -264,7 +333,7 @@ class Server:
                 # self.elect_leader()
 
     def handel_heartbeat(self, addr, message):
-        _, port = message.split(':')
+        _, port, _ = message.split(':')
         # print("Received HEARTBEAT")
         self.last_heartbeat[f"{addr[0]}:{port}"] = time.time()
 
@@ -272,45 +341,59 @@ class Server:
         r"""Sends the directory tree to the client"""
 
         _, port = message.split(':')
-        if self.is_leader:
-            tree = utils.build_directory_tree(self.dir_name)
-            tree = json.dumps(tree)
-            tree = f"TREE:{tree}"
+        try:
+            if self.is_leader:
+                tree = utils.build_directory_tree(self.dir_name)
+                tree = json.dumps(tree)
+                tree = f"TREE:{tree}"
 
-            send_ack_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            send_ack_socket.connect((addr[0], int(port)))
-            send_ack_socket.send(tree.encode())
-            send_ack_socket.close()
+                send_ack_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                send_ack_socket.connect((addr[0], int(port)))
+                send_ack_socket.send(tree.encode())
+                send_ack_socket.close()
+        except socket.error as e:
+            print("Could not connect to client")
 
     def handel_read_file(self, addr, message):
         r"""Sends the File to the client"""
 
         operation, port, file_path = message.split(':')
         port = int(port)
-
-        send_file_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        send_file_socket.connect((addr[0], int(port)))
-        send_file_socket.send(f"FILE:{file_path.split('/')[-1]}".encode())
-        utils.send_file(file_path, send_file_socket)
-        send_file_socket.close()
+        try:
+            send_file_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            send_file_socket.connect((addr[0], int(port)))
+            send_file_socket.send(f"FILE:{file_path.split('/')[-1]}".encode())
+            utils.send_file(file_path, send_file_socket)
+            send_file_socket.close()
+        except socket.error as e:
+            print("Could not connect to client")
 
     def handel_delete_file_non_leader(self, addr, message):
         r"""Deletes the file from the server"""
 
-        # OPERATION_LEADER_DELETE:operation:port:file_path:counter
-        _, operation, port, file_path, counter = message.split(':')
-        port = int(port)
-        
-        self.messages_received_from_leader[f"{counter}"] = f"{operation}:{port}:{file_path}"
-        self.leader_messages_counter = counter
+        # OPERATION_LEADER_WRITE:file_path:sender_port:counter
+        operation_leader, file_path, sender_port ,counter = message.split(':')
+        counter = int(counter)
+        if self.leader_messages_counter+1 == counter:
+            self.messages_received_from_leader[f"{counter}"] = f"{operation_leader}:{file_path}"
+            self.leader_messages_counter += 1
 
-        relative_path = self.dir_name + file_path
-        #delete the file in DB/file_path; handle deletion on all OSs
-        if os.path.exists(relative_path):
-            os.remove(relative_path)
-            print(f"File {relative_path} has been deleted.")
+            relative_path = self.dir_name + file_path
+            #delete the file in DB/file_path; handle deletion on all OSs
+            if os.path.exists(relative_path):
+                os.remove(relative_path)
+                print(f"File {relative_path} has been deleted.")
+            else:
+                print(f"The file {relative_path} does not exist.")
+            
+            self.handle_buffered_messages()
+        elif self.leader_messages_counter+1 > counter:
+            print("Duplicate message received")
+            pass
         else:
-            print(f"The file {relative_path} does not exist.")
+            self.messages_received_from_leader[f"{counter}"] = f"{operation_leader}:{file_path}"
+            print(f"Message {self.leader_messages_counter} is missing")
+            self.request_resend(addr,sender_port,counter)
 
     def handel_delete_file(self, addr, message):
         r"""Deletes the file from the server"""
@@ -326,39 +409,43 @@ class Server:
         else:
             print(f"The file {relative_path} does not exist.")
         
-        self.messages_received_from_leader[f"{self.leader_messages_counter}"] = message
-        self.leader_messages_counter += 1
+        message_to_be_sent_to_servers = f"OPERATION_LEADER_DELETE:{file_path}"
 
         # multicast to other servers to delete the file
-        self.multicast_message(f"OPERATION_LEADER_DELETE:{message}")
+        self.multicast_message(message_to_be_sent_to_servers)
         
-        # send <DONE> to client
-        send_done_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        send_done_socket.connect((addr[0], int(port)))
-        send_done_socket.send("<DONE>".encode())
-        send_done_socket.close()        
-
+        try:
+            # send <DONE> to client
+            send_done_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            send_done_socket.connect((addr[0], int(port)))
+            send_done_socket.send("<DONE>".encode())
+            send_done_socket.close()        
+        except socket.error as e:
+            print("Could not connect to client")
     def handel_write_file_non_leader(self, addr, message):
         r"""
         Receive the file from the leader and save it in the server
         """
-        # OPERATION_LEADER_WRITE:operation:port:file_path:content:counter
-        _, operation, port, file_path, file_content, counter = message.split(':')
+        # OPERATION_LEADER_WRITE:file_path:file_content:counter
+        print("message: " + message)
+        operation_leader, file_path, file_content,sender_port ,counter = message.split(':')
         file_path = file_path.strip()
-        port = int(port)
+        counter = int(counter)
 
-        if self.messages_received_from_leader+1 == counter:
-            self.messages_received_from_leader[f"{counter}"] = f"{operation}:{port}:{file_path}"
-            self.leader_messages_counter = counter
-
+        if self.leader_messages_counter+1 == counter:
+            self.messages_received_from_leader[f"{counter}"] = f"{operation_leader}:{file_path}:{file_content}"
+            self.leader_messages_counter += 1
             with open(self.dir_name + '/' + file_path, 'w') as f:
                 f.write(file_content)
-        elif self.messages_received_from_leader+1 > counter:
+            self.handle_buffered_messages()
+        elif self.leader_messages_counter+1 > counter:
             print("Duplicate message received")
             pass
         else:
-            print("Message is messing")
-            pass
+            self.messages_received_from_leader[f"{counter}"] = f"{operation_leader}:{file_path}:{file_content}"
+            print(f"Message {self.leader_messages_counter+1} is missing")
+            #ask sender to send it again
+            self.request_resend(addr, sender_port ,counter)
 
     def handel_write_file(self, addr, message, client_socket):
         r"""
@@ -370,21 +457,51 @@ class Server:
         port = int(port)
 
         file_content = utils.receive_file(file_path, client_socket, self.dir_name)
-        self.messages_received_from_leader[f"{self.leader_messages_counter}"] = f"{message}:{file_content}"
-        self.leader_messages_counter += 1
 
+        message_to_be_sent_to_servers = f"OPERATION_LEADER_WRITE:{file_path}:{file_content}"
         # multicast to other servers to update the file
-        self.multicast_message(f"OPERATION_LEADER_WRITE:{message}:{file_content}")
+        self.multicast_message(message_to_be_sent_to_servers)
         
         # send <DONE> to client
-        send_done_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        send_done_socket.connect((addr[0], int(port)))
-        send_done_socket.send("<DONE>".encode())
-        send_done_socket.close()
+        try:
+            send_done_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            send_done_socket.connect((addr[0], int(port)))
+            send_done_socket.send("<DONE>".encode())
+            send_done_socket.close()
+        except socket.error as e:
+            print("Could not connect to client")
 
+    def handle_buffered_messages(self):
+        r"""
+        Handle the messages that were before
+        """
+        while str(self.leader_messages_counter+1) in self.messages_received_from_leader.keys():
+            self.leader_messages_counter += 1
+            message = self.messages_received_from_leader[self.leader_messages_counter]
+            if message.startswith("OPERATION_LEADER_WRITE"):
+                _, file_path, file_content = message.split(':')
+                file_path = file_path.strip()
+                with open(self.dir_name + '/' + file_path, 'w') as f:
+                    f.write(file_content)
+            elif message.startswith("OPERATION_LEADER_DELETE"):
+                _, file_path = message.split(':')
+                file_path = file_path.strip()
+                relative_path = self.dir_name + file_path
+                #delete the file in DB/file_path; handle deletion on all OSs
+                if os.path.exists(relative_path):
+                    os.remove(relative_path)
+                    print(f"File {relative_path} has been deleted.")
+                else:
+                    print(f"The file {relative_path} does not exist.")
+            else:
+                print("Message is messing")
+                pass
     def send_heartbeat(self):
         while True:
-            self.HEARTBEAT_SOCKET.sendto(f"HEARTBEAT:{self.server_tcp_port}".encode(), ('<broadcast>', Server.SERVER_UDP_PORT))
+            #send acknoledgement of the last message received along with the heartbeat
+            last_message = 0 if len(self.messages_received_from_leader) == 0 else max(self.messages_received_from_leader)
+            print("last message: " + str(last_message))
+            self.HEARTBEAT_SOCKET.sendto(f"HEARTBEAT:{self.server_tcp_port}:{last_message}".encode(), ('<broadcast>', Server.SERVER_UDP_PORT))
             time.sleep(Server.HEARTBEAT_INTERVAL)
 
     def check_last_heartbeat(self):
@@ -396,8 +513,11 @@ class Server:
                     # print("Leader:" + str(self.leader))
                     ip, port = addr.split(':')
                     dead_server = {'ip': ip, 'port': int(port)}
-                    self.servers.remove(dead_server)
-                    dead_servers.append(dead_server)
+                    try:
+                        self.servers.remove(dead_server)
+                        dead_servers.append(dead_server)
+                    except:
+                        pass
                     del self.last_heartbeat[addr]
             for server in dead_servers:
                 if self.leader == f"{server['ip']}:{server['port']}":
