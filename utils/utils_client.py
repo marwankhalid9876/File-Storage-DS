@@ -23,7 +23,6 @@ def read_file_from_server(filename, client):
         file_bytes = ""
         while True:
             data = client.recv(1024).decode()
-            print('data')
             if data[-5:] == '<End>':
                 break
             else:

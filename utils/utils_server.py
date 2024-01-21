@@ -1,9 +1,9 @@
 import os
 import pickle
 
-def send_file(file_path, client):
+def send_file(file_path, client, server_tcp_port):
     try:
-        file = open('DB/'+file_path, 'rb')
+        file = open(f'DBs/DB_{server_tcp_port}'+file_path, 'rb')
         data = file.read(1024)
 
         while data:

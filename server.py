@@ -193,11 +193,11 @@ class Server:
             elif decoded_message.startswith('OPERATION_LEADER_DELETE'):
                 if not self.is_leader:
                     threading.Thread(target=self.handel_delete_file_non_leader, args=(addr, decoded_message)).start()
-                    # pass
+                    pass
             elif decoded_message.startswith('OPERATION_LEADER_WRITE'):
                 if not self.is_leader:
                     threading.Thread(target=self.handel_write_file_non_leader, args=(addr, decoded_message)).start()
-                    # pass
+                    pass
             elif decoded_message.startswith('HEARTBEAT'):
                 threading.Thread(target=self.handel_heartbeat, args=(addr, decoded_message)).start()
                 threading.Thread(target=self.handel_acks, args=(addr, decoded_message)).start()
@@ -363,9 +363,10 @@ class Server:
             send_file_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             send_file_socket.connect((addr[0], int(port)))
             send_file_socket.send(f"FILE:{file_path.split('/')[-1]}".encode())
-            utils.send_file(file_path, send_file_socket)
+            utils.send_file(file_path, send_file_socket, self.server_tcp_port)
             send_file_socket.close()
         except socket.error as e:
+            print(e)
             print("Could not connect to client")
 
     def handel_delete_file_non_leader(self, addr, message):
@@ -440,7 +441,6 @@ class Server:
             self.handle_buffered_messages()
         elif self.leader_messages_counter+1 > counter:
             print("Duplicate message received")
-            pass
         else:
             self.messages_received_from_leader[f"{counter}"] = f"{operation_leader}:{file_path}:{file_content}"
             print(f"Message {self.leader_messages_counter+1} is missing")
@@ -495,7 +495,7 @@ class Server:
                     print(f"The file {relative_path} does not exist.")
             else:
                 print("Message is messing")
-                pass
+                break
     def send_heartbeat(self):
         while True:
             #send acknoledgement of the last message received along with the heartbeat
