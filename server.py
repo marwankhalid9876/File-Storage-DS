@@ -57,7 +57,9 @@ class Server:
 
     def discover_hosts(self):
         print("Discovering hosts...")
-        self.broadcast_socket.sendto(f'DISCOVER:{self.server_tcp_port}'.encode(), ('<broadcast>', Server.SERVER_UDP_PORT))
+        for i in range(10):
+            self.broadcast_socket.sendto(f'DISCOVER:{self.server_tcp_port}'.encode(), ('<broadcast>', Server.SERVER_UDP_PORT))
+            time.sleep(1)
 
     def listen_for_TCP(self):
         listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -97,7 +99,7 @@ class Server:
                 continue
             elif message.startswith('DB'):
                 print("Received DB")
-                threading.Thread(target=self.getDB, args=(client_socket,)).start()
+                # threading.Thread(target=self.getDB, args=(client_socket,)).start()
                 continue
             elif message.startswith('OK'):
                 threading.Thread(target=self.handel_ok, args=(addr, message)).start()
@@ -311,6 +313,7 @@ class Server:
         _, port = message.split(':')
         print("Received WHO_IS_LEADER")
         # send back I_AM_THE_LEADER:{port} if self.is_leader, otherwise do not respond
+        print("client address and port: " + str(addr[0]) + ":" + str(port))
         try:
             if self.is_leader:
                 send_ack_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -318,8 +321,10 @@ class Server:
                 send_ack_socket.connect((addr[0], int(port)))
                 send_ack_socket.send(f'I_AM_THE_LEADER:{self.server_tcp_port}'.encode())
                 send_ack_socket.close()
+                print("Sent I_AM_THE_LEADER")
         except socket.error as e:
-            print("Could not connect to server: ", server)
+            print(e)
+            print("Could not connect to client: ")
 
     def handel_ok(self, addr, message):
         _, port = message.split(':')
@@ -500,7 +505,7 @@ class Server:
         while True:
             #send acknoledgement of the last message received along with the heartbeat
             last_message = 0 if len(self.messages_received_from_leader) == 0 else max(self.messages_received_from_leader)
-            print("last message: " + str(last_message))
+            # print("last message: " + str(last_message))
             self.HEARTBEAT_SOCKET.sendto(f"HEARTBEAT:{self.server_tcp_port}:{last_message}".encode(), ('<broadcast>', Server.SERVER_UDP_PORT))
             time.sleep(Server.HEARTBEAT_INTERVAL)
 
