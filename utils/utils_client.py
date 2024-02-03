@@ -14,7 +14,7 @@ def check_filename_exists(filename, filenames_on_server):
     return True
 
 
-def read_file_from_server(filename, client):
+def download_file_from_server(filename, client):
     if not os.path.exists('locals'):
         os.makedirs('locals')
 
@@ -29,13 +29,6 @@ def read_file_from_server(filename, client):
                 file_bytes += data
         f.write(file_bytes)
         print('File received successfully')
-
-    # if sys.platform.startswith('win32'):
-    #     os.startfile(filename)
-    # elif sys.platform.startswith('darwin'):
-    #     subprocess.run(('open', filename), check=True)
-    # elif sys.platform.startswith('linux'):
-    #     subprocess.run(('xdg-open', filename), check=True)
 
 
 def write_file_to_server(file_path, client):
@@ -69,8 +62,8 @@ def prompt_user(directories_dict, current_directory):
     print_directory_tree(current_directory_dict)
     print('==============================================')
     print('What operation would you like to do?')
-    print('For reading a file, write "read" then the file name')
-    print('For writing a file, write "write" then the file name')
+    print('For downloading a file, write "download" then the file name')
+    print('For uploading a file, write "upload" then the file name')
     print('For updating a file, write "update" then the file name')
     print('For deleting a file, write "delete" then the file name')
     print('For changing directory, write "cd" then the directory name')
@@ -144,11 +137,6 @@ def receive_tree_from_server(client):
     return directories_dict
 
 
-print('Connecting to the server...')
-# client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-# client.connect(('localhost', 9999))
-
-
 def client_main_app(client):
     current_directory = 'root'
     #Once connected, the client receives the directory tree from the server
@@ -165,14 +153,14 @@ def client_main_app(client):
                 operation = operation_filename_list[0].lower()
                 if operation == 'exit': break
                 filename = operation_filename_list[1]
-                if operation not in ['read', 'write', 'update', 'delete','cd']:
+                if operation not in ['download', 'upload', 'update', 'delete','cd']:
                     raise Exception
-                if operation in ['read','update','delete'] and not is_valid_path(directories_dict, current_directory, filename):
+                if operation in ['download','update','delete'] and not is_valid_path(directories_dict, current_directory, filename):
                     print('This file does not exist, please enter a file from the list')
                     raise Exception
-                if operation == 'write' and not os.path.exists(filename):#check that file exists on client side
+                if operation == 'upload' and not os.path.exists(filename):#check that file exists on client side
                     raise Exception
-                if operation == 'write' and is_valid_path(directories_dict, current_directory, filename): 
+                if operation == 'upload' and is_valid_path(directories_dict, current_directory, filename): 
                     if input('File already exists on the server, do you want to overwrite it? (y/n) \n') != 'y':
                         continue #if user doesn't want to overwrite, re-prompt user for another operation
                 if operation == 'delete' and input('Are you sure you want to delete this file? (y/n) \n') != 'y':
@@ -187,16 +175,16 @@ def client_main_app(client):
         if operation == 'exit': sys.exit()    
 
         match operation:
-            case 'read':
+            case 'download':
                 operation_path = operation + ' ' + current_directory + '/' + filename
                 client.send(operation_path.encode())
-                read_file_from_server(filename, client)
+                download_file_from_server(filename, client)
 
                 if input('Do you want to do more operations? (y/n) \n') == 'y':
                     client.send(b'<Continue>')#inform server that I want to do more operations
                     continue
                 break
-            case 'write':
+            case 'upload':
                 operation_path = operation + ' ' + current_directory + '/' + filename
                 client.send(operation_path.encode())
                 success = write_file_to_server(filename, client)
@@ -214,7 +202,7 @@ def client_main_app(client):
                 operation_path = operation + ' ' + current_directory + '/' + filename       
                 client.send(operation_path.encode())
                 print('The file will now be opened automatically, please make your changes and save the file')
-                read_file_from_server(operation_path, client)
+                download_file_from_server(operation_path, client)
                 while True:
                     user_done = input('Once you are done, please close the file and enter "y" \n') == 'y'
                     if user_done:
@@ -257,11 +245,3 @@ def client_main_app(client):
 
     client.send('<Exit>'.encode())
     client.close()
-
-
-# file_size = client.recv(1024).decode()
-# print(file_size)
-
-
-            
-
