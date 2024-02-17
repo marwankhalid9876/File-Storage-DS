@@ -8,10 +8,15 @@ import json
 import os
 import ast
 
+def print_thread_count():
+    # Count the number of alive threads
+    thread_count = len(threading.enumerate())
+    print(f"Current thread count: {thread_count}")
+
 class Server:
 
     SERVER_UDP_PORT = 5000
-    TIMEOUT = 3
+    TIMEOUT = 1
     HEARTBEAT_INTERVAL = 0.2
     T_Phase1 = 10
     T_Phase2 = 10
@@ -57,7 +62,7 @@ class Server:
 
     def discover_hosts(self):
         print("Discovering hosts...")
-        for i in range(10):
+        for i in range(5):
             self.broadcast_socket.sendto(f'DISCOVER:{self.server_tcp_port}'.encode(), ('<broadcast>', Server.SERVER_UDP_PORT))
             time.sleep(1)
 
@@ -341,6 +346,7 @@ class Server:
         _, port, _ = message.split(':')
         # print("Received HEARTBEAT")
         self.last_heartbeat[f"{addr[0]}:{port}"] = time.time()
+        # print_thread_count()
 
     def handel_get_tree(self, addr, message):
         r"""Sends the directory tree to the client"""
