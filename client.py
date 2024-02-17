@@ -5,7 +5,6 @@ import sys
 import utils.utils_client as utils
 import os
 import json
-import uuid
 import subprocess
 
 base_dir = os.path.dirname(__file__)
@@ -62,7 +61,7 @@ class Client:
                 self.directories_dict = json.loads(tree)
             elif message.startswith('FILE'):
                 filename = message.split(':')[1]
-                utils.read_file_from_server(filename, client_socket)
+                utils.download_file_from_server(filename, client_socket)
                 open_file(filename)
             elif message.startswith('<DONE>'):
                 self.operation_done_flag = True
@@ -88,14 +87,14 @@ class Client:
                     filename = None
                     break
                 filename = operation_filename_list[1]
-                if operation not in ['read', 'write', 'update', 'delete','cd']:
+                if operation not in ['download', 'upload', 'update', 'delete','cd']:
                     raise Exception
-                if operation in ['read','update','delete'] and not utils.is_valid_path(directories_dict, self.current_directory, filename):
+                if operation in ['download','update','delete'] and not utils.is_valid_path(directories_dict, self.current_directory, filename):
                     print('This file does not exist, please enter a file from the list')
                     raise Exception
-                if operation == 'write' and not os.path.exists(f"locals/{filename}"):#check that file exists on client side
+                if operation == 'upload' and not os.path.exists(f"locals/{filename}"):#check that file exists on client side
                     raise Exception
-                if operation == 'write' and utils.is_valid_path(directories_dict, self.current_directory, filename): 
+                if operation == 'upload' and utils.is_valid_path(directories_dict, self.current_directory, filename): 
                     if input('File already exists on the server, do you want to overwrite it? (y/n) \n') != 'y':
                         continue #if user doesn't want to overwrite, re-prompt user for another operation
                 if operation == 'delete' and input('Are you sure you want to delete this file? (y/n) \n') != 'y':
@@ -110,6 +109,7 @@ class Client:
         return operation, filename
 
     def send_TCP_message(self, message):
+        r"""Sends a message to the leader server"""
         if self.leader_ip is not None:
             try:
                 send_tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -122,6 +122,7 @@ class Client:
                 print('Try again...')
 
     def upload_file(self, operation, file_path, local_folder='locals'):
+        r"""Uploads a file to the server"""
         # Generate a random UUID
         while True:
             self.operation_done_flag = False
@@ -154,7 +155,7 @@ class Client:
                     end = time.time()
 
                 if not self.operation_done_flag:
-                    print('Could not write to the server')
+                    print('Could not upload to the server')
                     if input('Do you want to try again? (y/n) \n') != 'y':
                         break
                     # we can set a counter here to try a certain number of times
@@ -193,7 +194,6 @@ class Client:
 
             # do the local operations
             operation, filename = self.prepare_operation()
-
             # check for exit
             if operation == 'exit':
                 sys.exit()
@@ -207,7 +207,7 @@ class Client:
                 else:
                     #try:
                     match operation:
-                        case 'read':
+                        case 'download':
                             operation_path = f"{operation}:{self.client_port}:{self.current_directory}/{filename}"
                             self.send_TCP_message(operation_path)
                             self.leader_ip = None
@@ -215,22 +215,21 @@ class Client:
                             if input('Do you want to do more operations? (y/n) \n') != 'y':
                                 do_another_operation = False
                             break
-                        case 'write':
+                        case 'upload':
                             self.upload_file(operation, filename)
 
                             if input('Do you want to do more operations? (y/n) \n') != 'y':
                                 do_another_operation = False
                             break
-
                         case 'update':       
                             operation_path = f"{operation}:{self.client_port}:{self.current_directory}/{filename}"
-                            #send first message of update: first message is a read message
+                            #send first message of update: first message is a download message
                             self.send_TCP_message("first " + operation_path)
                             self.leader_ip = None
                             while True:
                                 user_done = input('Once you are done, please close the file and enter "y" \n') == 'y'
                                 if user_done:
-                                    #send second message of update: second message is a write message
+                                    #send second message of update: second message is a upload message
                                     #discover leader again
                                     while True:
                                         self.discover_leader()
@@ -270,7 +269,6 @@ class Client:
                                         continue
                                 break
                                 
-
                             if input('Do you want to do more operations? (y/n) \n') != 'y':
                                 do_another_operation = False
                             break
@@ -284,14 +282,11 @@ class Client:
                         case _:#handle if invalid operation
                             print('Invalid input, please try again2')
                             continue
-            
-                    # except Exception as e:
-                    #     print(f"An error occurred: {e}")
 
                 time.sleep(1)
 
-
     def get_available_port(self):
+        r"""Gets an available port for the client to use for the TCP connection with the leader server."""
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind(('', 0))
             port = s.getsockname()[1]
@@ -300,8 +295,6 @@ class Client:
 if __name__ == '__main__':
     
     client = Client()
-    # while True:
-        # message = input("Enter message: ")
     client.initiate_operation()
     print('==============================================')
-        #threading.Thread(target=client.send_message, args=(message,)).start()    
+ 
