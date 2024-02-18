@@ -66,7 +66,6 @@ def prompt_user(directories_dict, current_directory):
     print('For uploading a file, write "upload" then the file name')
     print('For updating a file, write "update" then the file name')
     print('For deleting a file, write "delete" then the file name')
-    print('For changing directory, write "cd" then the directory name')
     print('For exiting, write "exit"')
     print('Please note that the file name must be the full path from the current directory')
 
@@ -153,7 +152,7 @@ def client_main_app(client):
                 operation = operation_filename_list[0].lower()
                 if operation == 'exit': break
                 filename = operation_filename_list[1]
-                if operation not in ['download', 'upload', 'update', 'delete','cd']:
+                if operation not in ['download', 'upload', 'update', 'delete']:
                     raise Exception
                 if operation in ['download','update','delete'] and not is_valid_path(directories_dict, current_directory, filename):
                     print('This file does not exist, please enter a file from the list')
@@ -165,8 +164,6 @@ def client_main_app(client):
                         continue #if user doesn't want to overwrite, re-prompt user for another operation
                 if operation == 'delete' and input('Are you sure you want to delete this file? (y/n) \n') != 'y':
                     continue #if user doesn't want to delete, re-prompt user for another operation
-                if operation == 'cd'and not is_valid_directory(directories_dict, current_directory, filename):
-                        raise Exception
                 break #break out of loop if valid input
             #handle if invalid input
             except:
@@ -232,13 +229,13 @@ def client_main_app(client):
                     client.send(b'<Continue>')#inform server that I want to do more operations
                     continue
                 break
-            case 'cd':
-                #get rid of back steps
-                current_directory, filename = cd_back_steps(current_directory, filename)
-                #if there is a path after stepbacks, add it to the current directory
-                if filename != '':
-                    current_directory += '/' + filename
-                continue
+            # case 'cd':
+            #     #get rid of back steps
+            #     current_directory, filename = cd_back_steps(current_directory, filename)
+            #     #if there is a path after stepbacks, add it to the current directory
+            #     if filename != '':
+            #         current_directory += '/' + filename
+            #     continue
             case _:#handle if invalid operation
                 print('Invalid input, please try again2')
                 continue

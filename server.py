@@ -14,10 +14,10 @@ def print_thread_count():
 class Server:
 
     SERVER_UDP_PORT = 5000
-    TIMEOUT = 1
-    HEARTBEAT_INTERVAL = 0.2
-    T_Phase1 = 10
-    T_Phase2 = 10
+    HEARTBEAT_INTERVAL = 1
+    TIMEOUT = HEARTBEAT_INTERVAL * 2.5
+    T_Phase1 = 2
+    T_Phase2 = 2
 
     def __init__(self):
         self.server_ip = f"{socket.gethostbyname(socket.gethostname())}"
@@ -59,13 +59,6 @@ class Server:
         # Broadcast the message to all servers
         self.broadcast_socket.sendto(f'{message}'.encode(), ('<broadcast>', Server.SERVER_UDP_PORT))
 
-    def discover_hosts(self):
-        r"""Send Discover to all devices on the network"""
-        print("Discovering hosts...")
-        for i in range(5):
-            self.broadcast_socket.sendto(f'DISCOVER:{self.server_tcp_port}'.encode(), ('<broadcast>', Server.SERVER_UDP_PORT))
-            time.sleep(0.5)
-
     def listen_for_TCP(self):
         r"""Listen for TCP messages from clients and other servers"""
         listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -74,11 +67,14 @@ class Server:
 
         while True:
             client_socket, addr = listen_socket.accept()
-            message = client_socket.recv(1024).decode()
-            if message == 'HEARTBEAT':
+            try:
+                message = client_socket.recv(1024).decode()
+            except socket.error as e:
+                print("Could not connect to client: ", addr)
                 continue
-            elif message.startswith('GET_TREE'):
-                print("Received GET_TREE")
+
+            if message.startswith('GET_TREE'):
+                print("Received GET FILES' NAMES")
                 threading.Thread(target=self.handel_get_tree, args=(addr, message)).start()
                 continue
             elif message.startswith('download'):
@@ -90,17 +86,14 @@ class Server:
                 threading.Thread(target=self.handel_upload_file, args=(addr, message, client_socket)).start()
                 continue
             elif message.startswith('first update'):
-                print("Received First Step of UPDATE")
+                print("Received FIRST STEP OF UPDATE")
                 threading.Thread(target=self.handel_download_file, args=(addr, message)).start()
             elif message.startswith('second update'):
-                print("Received Second Step of UPDATE")
+                print("Received SECOND STEP OF UPDATE")
                 threading.Thread(target=self.handel_upload_file, args=(addr, message, client_socket)).start()
             elif message.startswith('delete'):
                 print("Received DELETE")
                 threading.Thread(target=self.handel_delete_file, args=(addr, message)).start()
-                continue
-            elif message.startswith('DB'):
-                print("Received DB")
                 continue
             elif message.startswith('OK'):
                 threading.Thread(target=self.handel_ok, args=(addr, message)).start()
@@ -131,13 +124,54 @@ class Server:
                 if not self.is_leader:
                     threading.Thread(target=self.handel_upload_file_non_leader, args=(addr, message)).start()
     
+    def listen_for_UDP(self):
+        r"""Listen for UDP messages from clients and other servers"""
+        print("Listening for UDP Messages...")
+        listen_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listen_socket.bind(('0.0.0.0', Server.SERVER_UDP_PORT))
+
+        while True:
+            try:
+                message, addr = listen_socket.recvfrom(4096)
+                decoded_message = message.decode()
+            except:
+                continue
+            if decoded_message.startswith('DISCOVER'):
+                threading.Thread(target=self.handel_discover, args=(addr, decoded_message)).start()
+            elif decoded_message.startswith('WHO_IS_THE_LEADER'):
+                threading.Thread(target=self.handel_who_is_leader, args=(addr, decoded_message)).start()
+            elif decoded_message.startswith('OPERATION_LEADER_DELETE'):
+                if not self.is_leader:
+                    threading.Thread(target=self.handel_delete_file_non_leader, args=(addr, decoded_message)).start()
+            elif decoded_message.startswith('OPERATION_LEADER_UPLOAD'):
+                if not self.is_leader:
+                    threading.Thread(target=self.handel_upload_file_non_leader, args=(addr, decoded_message)).start()
+            elif decoded_message.startswith('HEARTBEAT'):
+                threading.Thread(target=self.handel_heartbeat, args=(addr, decoded_message)).start()
+                threading.Thread(target=self.handel_acks, args=(addr, decoded_message)).start()
+
+    def discover_hosts(self):
+        r"""Send Discover to all devices on the network"""
+        print("Discovering hosts...")
+        while True:
+            try:
+                self.broadcast_socket.sendto(f'DISCOVER:{self.server_tcp_port}'.encode(), ('<broadcast>', Server.SERVER_UDP_PORT))
+                time.sleep(2)
+                break
+            except:
+                print("Could not send DISCOVER message, sending again...")
+
     def handel_resend(self, addr, message):
         r"""Handle the RESEND message from the server to resend the missing messages to the requester server"""
-        _, missing_messages, sender_port = message.split(':')
+        try:
+            _, missing_messages, sender_port = message.split(':')
+        except:
+            print(message)
+            print("XXXXXXXXXXXXXXX")
+            return
         sender_port = int(sender_port)
         missing_messages = ast.literal_eval(missing_messages)
-        print(self.messages_received_from_leader)
-        print(message)
         for i in missing_messages:
             #Do I really have this message? If not, ignore
             if str(i) not in self.messages_received_from_leader.keys():
@@ -155,7 +189,12 @@ class Server:
                 
     def handel_coordinator(self, addr, message):
         r"""Handle the COORDINATOR message from the server to update the leader of the network"""
-        _, ip, port = message.split(':')
+        try:
+            _, ip, port = message.split(':')
+        except:
+            print(message)
+            print("YYYYYYYYYYYYYYYYY")
+            return
         self.leader = f"{ip}:{port}"
         self.is_leader = False
         self.ELECTION_IN_PROGRESS = False
@@ -163,7 +202,12 @@ class Server:
 
     def handel_elect(self, addr, message):
         r"""Handle the ELECT message from the server to start the election if the sender server has a higher priority"""
-        _, ip, port = message.split(':')
+        try:
+            _, ip, port = message.split(':')
+        except:
+            print(message)
+            print("ZZZZZZZZZZZZZZZZZZZZZZ")
+            return
         #send tcp ok message to sender
         send_tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         send_tcp_socket.bind((self.server_ip, 0))
@@ -177,35 +221,14 @@ class Server:
             self.ELECTION_IN_PROGRESS = True
             threading.Thread(target=self.start_bully).start()
        
-    def listen_for_UDP(self):
-        r"""Listen for UDP messages from clients and other servers"""
-        print("Listening for UDP Messages...")
-        listen_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        listen_socket.bind(('0.0.0.0', Server.SERVER_UDP_PORT))
-
-        while True:
-            message, addr = listen_socket.recvfrom(4096)
-            decoded_message = message.decode()
-            if decoded_message.startswith('DISCOVER'):
-                threading.Thread(target=self.handel_discover, args=(addr, decoded_message)).start()
-            elif decoded_message.startswith('WHO_IS_THE_LEADER'):
-                threading.Thread(target=self.handel_who_is_leader, args=(addr, decoded_message)).start()
-            elif decoded_message.startswith('OPERATION_LEADER_DELETE'):
-                if not self.is_leader:
-                    threading.Thread(target=self.handel_delete_file_non_leader, args=(addr, decoded_message)).start()
-                    pass
-            elif decoded_message.startswith('OPERATION_LEADER_UPLOAD'):
-                if not self.is_leader:
-                    threading.Thread(target=self.handel_upload_file_non_leader, args=(addr, decoded_message)).start()
-                    pass
-            elif decoded_message.startswith('HEARTBEAT'):
-                threading.Thread(target=self.handel_heartbeat, args=(addr, decoded_message)).start()
-                threading.Thread(target=self.handel_acks, args=(addr, decoded_message)).start()
-
     def handel_acks(self, addr, message):
         r"""Handle the ACK message from the server to check if the message was received successfully"""
-        _, port, last_message = message.split(':')
+        try:
+            _, port, last_message = message.split(':')
+        except:
+            print(message)
+            print("AAAAAAAAAAAAAAAAAAAA")
+            return
         if int(last_message) > self.leader_messages_counter:
             print("bad ack received from " + addr[0] + ":" + port)
             self.request_resend(addr, port,int(last_message))
@@ -227,18 +250,22 @@ class Server:
             # Close the socket
             s.close()
         except socket.error as e:
-            print("Could not connect to server: ", server)
+            print(f"Could not connect to server: {addr[0]}:{int(port)}")
 
     def handel_discover(self, addr, message):
         r"""Handle the DISCOVER message to add the server to the list of servers"""
-
-        _, port = message.split(':')
+        try:
+            _, port = message.split(':')
+        except:
+            print(message)
+            print("Wrong Discover message received")
+            return
         server_config = {'ip': addr[0], 'port': int(port)}
         if server_config != {'ip': self.server_ip, 'port': self.server_tcp_port}:
             if server_config not in self.servers:
                 print(f"** Adding server: {server_config} to discovered servers")
                 self.servers.append(server_config)
-            
+                self.print_servers()
             try:
                 send_tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 send_tcp_socket.bind((self.server_ip, 0))
@@ -246,11 +273,16 @@ class Server:
                 send_tcp_socket.send(f'OK:{self.server_tcp_port}'.encode())
                 send_tcp_socket.close()
             except socket.error as e:
-                print("Could not connect to server: ", server)
+                print(f"Could not connect to server: {addr[0]}:{int(port)}")
             
     def handel_who_is_leader(self, addr, message):
         r"""Handle the WHO_IS_THE_LEADER message from the client to get the leader of the network"""
-        _, port = message.split(':')
+        try:
+            _, port = message.split(':')
+        except:
+            print(message)
+            print("Wrong WHO_IS_LEADER message received")
+            return
         print("Received WHO_IS_LEADER")
         # send back I_AM_THE_LEADER:{port} if self.is_leader, otherwise do not respond
         print("client address and port: " + str(addr[0]) + ":" + str(port))
@@ -268,23 +300,45 @@ class Server:
 
     def handel_ok(self, addr, message):
         r"""Handle the OK message from the server to add it to the list of servers"""
-        _, port = message.split(':')
+        try:
+            _, port = message.split(':')
+        except:
+            print(message)
+            print("Wrong OK message received")
+            return
         server_config = {'ip': addr[0], 'port': int(port)}
         if server_config != {'ip': self.server_ip, 'port': self.server_tcp_port}:
             if server_config not in self.servers:
                 print(f"** Adding server: {server_config} to discovered servers")
                 self.servers.append(server_config)
+                self.print_servers()
 
     def handel_heartbeat(self, addr, message):
         r"""Handle the heartbeat message"""
-        _, port, _ = message.split(':')
+        try:
+            _, port, _ = message.split(':')
+        except:
+            print(message)
+            print("Wrong HEARTBEAT message received")
+            return
         self.last_heartbeat[f"{addr[0]}:{port}"] = time.time()
-        print_thread_count()
+        server_config = {'ip': addr[0], 'port': int(port)}
+
+        if server_config not in self.servers:
+            if server_config != {'ip': self.server_ip, 'port': self.server_tcp_port}:
+                self.servers.append(server_config)
+                print(f"** Adding server: {server_config} to discovered servers")
+                self.print_servers()
+        # print_thread_count()
 
     def handel_get_tree(self, addr, message):
         r"""Sends the directory tree to the client"""
-
-        _, port = message.split(':')
+        try:
+            _, port = message.split(':')
+        except:
+            print(message)
+            print("Wrong GET_TREE message received")
+            return
         try:
             if self.is_leader:
                 tree = utils.build_directory_tree(self.dir_name)
@@ -296,12 +350,17 @@ class Server:
                 send_ack_socket.send(tree.encode())
                 send_ack_socket.close()
         except socket.error as e:
-            print("Could not connect to client")
+            print("Something went wrong while sending the tree to the client")
+            print(e)
 
     def handel_download_file(self, addr, message):
         r"""Sends the File to the client"""
-
-        operation, port, file_path = message.split(':')
+        try:
+            operation, port, file_path = message.split(':')
+        except:
+            print(message)
+            print("Wrong DOWNLOAD message received")
+            return
         port = int(port)
         try:
             send_file_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -317,7 +376,12 @@ class Server:
         r"""Deletes the file from the server"""
 
         # OPERATION_LEADER_UPLOAD:file_path:sender_port:counter
-        operation_leader, file_path, sender_port ,counter = message.split(':')
+        try:
+            operation_leader, file_path, sender_port ,counter = message.split(':')
+        except:
+            print(message)
+            print("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+            return
         counter = int(counter)
         if self.leader_messages_counter+1 == counter:
             self.messages_received_from_leader[f"{counter}"] = f"{operation_leader}:{file_path}"
@@ -334,7 +398,6 @@ class Server:
             self.handle_buffered_messages()
         elif self.leader_messages_counter+1 > counter:
             print("Duplicate message received")
-            pass
         else:
             self.messages_received_from_leader[f"{counter}"] = f"{operation_leader}:{file_path}"
             print(f"Message {self.leader_messages_counter} is missing")
@@ -342,8 +405,12 @@ class Server:
 
     def handel_delete_file(self, addr, message):
         r"""Deletes the file from the server"""
-
-        operation, port, file_path = message.split(':')
+        try:
+            operation, port, file_path = message.split(':')
+        except:
+            print(message)
+            print("Wrong DELETE message received")
+            return
         port = int(port)
 
         relative_path = self.dir_name + file_path
@@ -374,7 +441,12 @@ class Server:
         """
         # OPERATION_LEADER_UPLOAD:file_path:file_content:counter
         print("message: " + message)
-        operation_leader, file_path, file_content,sender_port ,counter = message.split(':')
+        try:
+            operation_leader, file_path, file_content,sender_port ,counter = message.split(':')
+        except:
+            print(message)
+            print("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC")
+            return
         file_path = file_path.strip()
         counter = int(counter)
 
@@ -396,8 +468,12 @@ class Server:
         r"""
         Receive the file from the client and save it in the server
         """
-
-        operation, port, file_path = message.split(':')
+        try:
+            operation, port, file_path = message.split(':')
+        except:
+            print(message)
+            print("Wrong UPLOAD message received")
+            return
         file_path = file_path.strip()
         port = int(port)
 
@@ -418,7 +494,7 @@ class Server:
 
     def handle_buffered_messages(self):
         r"""
-        Handle the messages that were before
+        Handle the messages that were before the current message
         """
         while str(self.leader_messages_counter+1) in self.messages_received_from_leader.keys():
             self.leader_messages_counter += 1
@@ -445,10 +521,13 @@ class Server:
     def send_heartbeat(self):
         r"""Send heartbeat to all servers"""
         while True:
-            #send acknoledgement of the last message received along with the heartbeat
-            last_message = 0 if len(self.messages_received_from_leader) == 0 else max(self.messages_received_from_leader)
-            self.HEARTBEAT_SOCKET.sendto(f"HEARTBEAT:{self.server_tcp_port}:{last_message}".encode(), ('<broadcast>', Server.SERVER_UDP_PORT))
-            time.sleep(Server.HEARTBEAT_INTERVAL)
+            try:
+                #send acknoledgement of the last message received along with the heartbeat
+                last_message = 0 if len(self.messages_received_from_leader) == 0 else max(self.messages_received_from_leader)
+                self.HEARTBEAT_SOCKET.sendto(f"HEARTBEAT:{self.server_tcp_port}:{last_message}".encode(), ('<broadcast>', Server.SERVER_UDP_PORT))
+                time.sleep(Server.HEARTBEAT_INTERVAL)
+            except:
+                print("Could not send HEARTBEAT message, sending again...")
 
     def check_last_heartbeat(self):
         r"""Check the last heartbeat of each server and remove the dead servers from the list of servers"""
@@ -463,15 +542,17 @@ class Server:
                         dead_servers.append(dead_server)
                     except:
                         pass
+
                     del self.last_heartbeat[addr]
-            for server in dead_servers:
-                if self.leader == f"{server['ip']}:{server['port']}":
-                            if not self.ELECTION_IN_PROGRESS:
-                                self.leader = None
-                                self.is_leader = False
-                                self.ELECTION_IN_PROGRESS = True
-                                print("I will start election because I found out that the leader is dead")
-                                threading.Thread(target=self.start_bully).start()
+                    if self.leader == addr:
+                        if not self.ELECTION_IN_PROGRESS:
+                            self.leader = None
+                            self.is_leader = False
+                            self.ELECTION_IN_PROGRESS = True
+                            print("I will start election because I found out that the leader is dead")
+                            threading.Thread(target=self.start_bully).start()
+            if len(dead_servers) > 0:
+                self.print_servers()
             time.sleep(Server.HEARTBEAT_INTERVAL)  # Check Servers every second
             
     def get_available_port(self):
@@ -491,7 +572,7 @@ class Server:
             print("-", server)
         print("*"*20)
 
-    def send_message_to_servers(self, servers, message):
+    def send_bully_message_to_servers(self, servers, message):
         r"""Send TCP message to all servers except the sender server"""
 
         print(f"Me: {self.server_tcp_port}")
@@ -525,7 +606,7 @@ class Server:
         #BASE CASE       
         if len(larger_servers) == 0:
             #send coordinator message to all servers
-            self.send_message_to_servers(self.servers, self.coordinator_message)
+            self.send_bully_message_to_servers(self.servers, self.coordinator_message)
             self.is_leader = True
             self.leader = f"{self.server_ip}:{self.server_tcp_port}"
             self.ELECTION_IN_PROGRESS = False
@@ -535,7 +616,7 @@ class Server:
                 #phase 1
                 self.ANSWER_RECEIVED = False
                 #send elect to every larger server
-                self.send_message_to_servers(larger_servers, self.elect_message)
+                self.send_bully_message_to_servers(larger_servers, self.elect_message)
                 time.sleep(Server.T_Phase1)
 
                 #phase 2
@@ -545,7 +626,7 @@ class Server:
                         break
                 else:
                     #send coordinator message to all servers
-                    self.send_message_to_servers(self.servers, self.coordinator_message)
+                    self.send_bully_message_to_servers(self.servers, self.coordinator_message)
                     self.is_leader = True
                     self.leader = f"{self.server_ip}:{self.server_tcp_port}"
                     self.ELECTION_IN_PROGRESS = False
@@ -556,15 +637,9 @@ class Server:
         r"""Start the server"""
         threading.Thread(target=self.listen_for_UDP, daemon=True).start()
         threading.Thread(target=self.listen_for_TCP, daemon=True).start()
-
         self.discover_hosts()
-        time.sleep(2)
-
         self.print_servers()
-
         threading.Thread(target=self.start_bully).start()
-        # self.start_bully()
-        # time.sleep(2)
         threading.Thread(target=self.send_heartbeat, daemon=True).start()
         threading.Thread(target=self.check_last_heartbeat, daemon=True).start()
         print("Server Started...")
@@ -573,6 +648,5 @@ class Server:
 if __name__ == '__main__':
     server = Server()
     server.start()
-    voltage = 0
     while True:
         pass
