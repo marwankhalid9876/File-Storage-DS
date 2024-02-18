@@ -79,6 +79,7 @@ class Client:
             try:
                 # Print the files on the server and the operations that can be done
                 self.get_tree()
+                directories_dict = self.directories_dict
                 utils.prompt_user(directories_dict, self.current_directory)
                 operation_filename = input('Please enter your operation: \n')
                 operation_filename_list = operation_filename.split(' ', 1)
@@ -87,7 +88,7 @@ class Client:
                     filename = None
                     break
                 filename = operation_filename_list[1]
-                if operation not in ['download', 'upload', 'update', 'delete','cd']:
+                if operation not in ['download', 'upload', 'update', 'delete','refresh', 'r']:
                     raise Exception
                 if operation in ['download','update','delete'] and not utils.is_valid_path(directories_dict, self.current_directory, filename):
                     print('This file does not exist, please enter a file from the list')
