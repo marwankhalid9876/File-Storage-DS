@@ -100,7 +100,7 @@ class Server:
             elif message.startswith('COORDINATOR'):
                 _, ip, port = message.split(':')
                 #if I deserve to be leader more than the sender, I start an election
-                if f"{ip}:{port}" < f"{self.server_ip}:{str(self.server_tcp_port)}":
+                if f"{ip}:{port}" < f"{self.server_ip}:{self.server_tcp_port}":
                     print("Starting election because I deserve to be leader more than the COORDINATOR sender")
                     self.ELECTION_IN_PROGRESS = True
                     threading.Thread(target=self.start_bully).start()
@@ -263,7 +263,7 @@ class Server:
         server_config = {'ip': addr[0], 'port': int(port)}
         if server_config != {'ip': self.server_ip, 'port': self.server_tcp_port}:
             if f'{addr[0]}:{port}' not in map(utils.stringfyServers, self.servers):
-                print(f"** Adding server: {server_config} to discovered servers")
+                # print(f"** Adding server: {server_config} to discovered servers")
                 self.servers.append(server_config)
                 self.print_servers()
             try:
@@ -309,7 +309,7 @@ class Server:
         server_config = {'ip': addr[0], 'port': int(port)}
         if server_config != {'ip': self.server_ip, 'port': self.server_tcp_port}:
             if f'{addr[0]}:{port}' not in map(utils.stringfyServers, self.servers):
-                print(f"** Adding server: {server_config} to discovered servers")
+                # print(f"** Adding server: {server_config} to discovered servers")
                 self.servers.append(server_config)
                 self.print_servers()
 
@@ -327,7 +327,7 @@ class Server:
         if f'{addr[0]}:{port}' not in map(utils.stringfyServers, self.servers):
             if server_config != {'ip': self.server_ip, 'port': self.server_tcp_port}:
                 self.servers.append(server_config)
-                print(f"** Adding server: {server_config} to discovered servers")
+                # print(f"** Adding server: {server_config} to discovered servers")
                 self.print_servers()
         # print_thread_count()
 
@@ -571,14 +571,9 @@ class Server:
         for server in self.servers:
             print("-", server)
         print("*"*20)
-
+        
     def send_bully_message_to_servers(self, servers, message):
         r"""Send TCP message to all servers except the sender server"""
-
-        print(f"Me: {self.server_tcp_port}")
-        print("Sending message to all servers")
-        for server in servers:
-            print(f"server port: {server['port']}")
         for server in servers:
             if server == {'ip': self.server_ip, 'port': self.server_tcp_port}:
                 continue
@@ -587,7 +582,7 @@ class Server:
                 send_tcp_socket.bind((self.server_ip, 0))
                 send_tcp_socket.connect(((server['ip'], int(server['port']))))
                 send_tcp_socket.send(message.encode())
-                print(f"I am server {self.server_tcp_port} and I sent {message.split(':')[0]} to {server['port']}")
+                # print(f"I am server {self.server_tcp_port} and I sent {message.split(':')[0]} to {server['port']}")
                 send_tcp_socket.close()
             except socket.error as e:
                 print("Could not connect to server: ", server)
@@ -599,7 +594,7 @@ class Server:
         larger_servers = []
         for server in self.servers:
             if f"{server['ip']}:{server['port']}" > f"{self.server_ip}:{self.server_tcp_port}":
-                print(f"ME: {self.server_tcp_port} am smaller than {server['port']}")
+                # print(f"ME: {self.server_tcp_port} am smaller than {server['port']}")
                 self.is_leader = False
                 larger_servers.append(server)
 
@@ -623,6 +618,7 @@ class Server:
                 if self.ANSWER_RECEIVED:
                     time.sleep(Server.T_Phase2)
                     if not self.ELECTION_IN_PROGRESS:
+                        print(f"Am I Leader from bully: {self.is_leader}")
                         break
                 else:
                     #send coordinator message to all servers

@@ -79,16 +79,18 @@ class Client:
             try:
                 # Print the files on the server and the operations that can be done
                 self.get_tree()
-                directories_dict = self.directories_dict
                 utils.prompt_user(directories_dict, self.current_directory)
                 operation_filename = input('Please enter your operation: \n')
                 operation_filename_list = operation_filename.split(' ', 1)
                 operation = operation_filename_list[0].lower()
+
                 if operation == 'exit': 
                     filename = None
                     break
+                if operation == 'refresh' or operation=='r':
+                    return operation, None
                 filename = operation_filename_list[1]
-                if operation not in ['download', 'upload', 'update', 'delete','refresh', 'r']:
+                if operation not in ['download', 'upload', 'update', 'delete']:
                     raise Exception
                 if operation in ['download','update','delete'] and not utils.is_valid_path(directories_dict, self.current_directory, filename):
                     print('This file does not exist, please enter a file from the list')
@@ -100,8 +102,6 @@ class Client:
                         continue #if user doesn't want to overwrite, re-prompt user for another operation
                 if operation == 'delete' and input('Are you sure you want to delete this file? (y/n) \n') != 'y':
                     continue #if user doesn't want to delete, re-prompt user for another operation
-                if operation == 'refresh' or operation=='r':
-                        continue
                 break #break out of loop if valid input
             #handle if invalid input
             except:
@@ -201,6 +201,8 @@ class Client:
             if operation == 'exit':
                 sys.exit()
             # send operation to the leader
+            elif operation == 'r':
+                continue
             while True:
                 self.discover_leader()
                 time.sleep(1)
