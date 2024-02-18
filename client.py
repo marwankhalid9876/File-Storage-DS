@@ -99,8 +99,8 @@ class Client:
                         continue #if user doesn't want to overwrite, re-prompt user for another operation
                 if operation == 'delete' and input('Are you sure you want to delete this file? (y/n) \n') != 'y':
                     continue #if user doesn't want to delete, re-prompt user for another operation
-                if operation == 'cd'and not utils.is_valid_directory(directories_dict, self.current_directory, filename):
-                        raise Exception
+                if operation == 'refresh' or operation=='r':
+                        continue
                 break #break out of loop if valid input
             #handle if invalid input
             except:
@@ -205,7 +205,8 @@ class Client:
                 time.sleep(1)
 
                 if self.leader_ip is None:
-                    print("No leader found")
+                    # print("No leader found")
+                    pass
                 else:
                     #try:
                     match operation:
@@ -238,7 +239,7 @@ class Client:
                                         time.sleep(1)
                                         if not self.leader_ip is None:
                                             break
-                                        print("No leader found")
+                                        # print("No leader found")
                                     self.upload_file("second " + operation, filename)
                                     break
                                 else: 
