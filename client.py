@@ -180,11 +180,13 @@ class Client:
         while do_another_operation:
             # if there is no leader, discover one
             # if there is a leader, get the tree then set the leader to None
+            print('Discovering leader, this may take a few seconds...')
             while True:
                 self.discover_leader()
                 time.sleep(1)
                 if self.leader_ip is None:
-                    print("No leader found")
+                    # print("No leader found")
+                    pass
                 else:
                     self.get_tree()
                     #sleep until you get the tree

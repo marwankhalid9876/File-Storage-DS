@@ -279,7 +279,7 @@ class Server:
         r"""Handle the heartbeat message"""
         _, port, _ = message.split(':')
         self.last_heartbeat[f"{addr[0]}:{port}"] = time.time()
-        # print_thread_count()
+        print_thread_count()
 
     def handel_get_tree(self, addr, message):
         r"""Sends the directory tree to the client"""
