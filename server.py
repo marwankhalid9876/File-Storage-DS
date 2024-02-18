@@ -15,7 +15,7 @@ class Server:
 
     SERVER_UDP_PORT = 5000
     HEARTBEAT_INTERVAL = 1
-    TIMEOUT = HEARTBEAT_INTERVAL * 2.5
+    TIMEOUT = HEARTBEAT_INTERVAL * 4
     T_Phase1 = 2
     T_Phase2 = 2
 
@@ -262,7 +262,7 @@ class Server:
             return
         server_config = {'ip': addr[0], 'port': int(port)}
         if server_config != {'ip': self.server_ip, 'port': self.server_tcp_port}:
-            if server_config not in self.servers:
+            if f'{addr[0]}:{port}' not in map(utils.stringfyServers, self.servers):
                 print(f"** Adding server: {server_config} to discovered servers")
                 self.servers.append(server_config)
                 self.print_servers()
@@ -308,7 +308,7 @@ class Server:
             return
         server_config = {'ip': addr[0], 'port': int(port)}
         if server_config != {'ip': self.server_ip, 'port': self.server_tcp_port}:
-            if server_config not in self.servers:
+            if f'{addr[0]}:{port}' not in map(utils.stringfyServers, self.servers):
                 print(f"** Adding server: {server_config} to discovered servers")
                 self.servers.append(server_config)
                 self.print_servers()
@@ -324,7 +324,7 @@ class Server:
         self.last_heartbeat[f"{addr[0]}:{port}"] = time.time()
         server_config = {'ip': addr[0], 'port': int(port)}
 
-        if server_config not in self.servers:
+        if f'{addr[0]}:{port}' not in map(utils.stringfyServers, self.servers):
             if server_config != {'ip': self.server_ip, 'port': self.server_tcp_port}:
                 self.servers.append(server_config)
                 print(f"** Adding server: {server_config} to discovered servers")
