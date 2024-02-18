@@ -161,3 +161,6 @@ def server_main_app(client):
         print('CLIENT OPERATION TERMINATED...')
 
 
+def stringfyServers(x):
+    return f"{x['ip']}:{x['port']}"
+
