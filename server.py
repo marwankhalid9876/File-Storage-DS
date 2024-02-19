@@ -440,7 +440,7 @@ class Server:
         Receive the file from the leader and save it in the server
         """
         # OPERATION_LEADER_UPLOAD:file_path:file_content:counter
-        print("message: " + message)
+        # print("message: " + message)
         try:
             operation_leader, file_path, file_content,sender_port ,counter = message.split(':')
         except:

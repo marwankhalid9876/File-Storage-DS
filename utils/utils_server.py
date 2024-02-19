@@ -19,8 +19,8 @@ def send_file(file_path, client, server_tcp_port):
 def receive_file(filename, client_socket, dir_name):
     try:
         data = client_socket.recv(1024).decode()
-        print('RECEIVED DATA: '+data)
-        print('filename: '+filename)
+        # print('RECEIVED DATA: '+data)
+        # print('filename: '+filename)
         
         with open(dir_name + '/' +filename, 'w') as f: 
             file_content = ""
